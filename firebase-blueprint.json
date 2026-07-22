@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "clients": {
+      "title": "Clients",
+      "description": "System clients purchasing POS systems",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "shopName": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "system": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "shopName", "phone", "system", "category"]
+    },
+    "packages": {
+      "title": "Packages",
+      "description": "POS Software packages",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "system": { "type": "string" },
+        "category": { "type": "string" },
+        "features": { "type": "array" },
+        "price": { "type": "number" },
+        "discount": { "type": "number" },
+        "finalPrice": { "type": "number" }
+      },
+      "required": ["name", "price", "finalPrice"]
+    },
+    "offers": {
+      "title": "Offers",
+      "description": "Limited time promotional offers for POS systems",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "system": { "type": "string" },
+        "category": { "type": "string" },
+        "durationValue": { "type": "number" },
+        "durationUnit": { "type": "string" },
+        "features": { "type": "array" },
+        "price": { "type": "number" },
+        "discount": { "type": "number" },
+        "finalPrice": { "type": "number" },
+        "badgeText": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["name", "price", "finalPrice", "durationValue", "durationUnit"]
+    },
+    "sales": {
+      "title": "Sales",
+      "description": "POS sales invoices",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "shopName": { "type": "string" },
+        "phone": { "type": "string" },
+        "system": { "type": "string" },
+        "category": { "type": "string" },
+        "date": { "type": "string" },
+        "deliveryDate": { "type": "string" },
+        "packageId": { "type": "string" },
+        "packageName": { "type": "string" },
+        "packagePrice": { "type": "number" },
+        "devices": { "type": "array" },
+        "visits": { "type": "array" },
+        "devicesTotal": { "type": "number" },
+        "visitsTotal": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number" },
+        "finalInvoice": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["system", "category", "date", "finalInvoice", "status"]
+    },
+    "expenses": {
+      "title": "Expenses",
+      "description": "Operational expenses and costs",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "category": { "type": "string" },
+        "system": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "amount", "date", "category"]
+    },
+    "projects": {
+      "title": "Projects Portfolio",
+      "description": "Showcase of live projects and systems built for clients",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "system": { "type": "string" },
+        "category": { "type": "string" },
+        "url": { "type": "string" },
+        "description": { "type": "string" },
+        "clientName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "system", "category", "url"]
+    }
+  }
+}
