@@ -4,15 +4,37 @@ import { Download, Smartphone, Share, PlusSquare, X, Check, ExternalLink, Copy, 
 interface InstallPwaModalProps {
   isOpen: boolean;
   onClose: () => void;
+  installPrompt?: any;
+  onInstallApp?: () => void;
+  isAppInstalled?: boolean;
 }
 
-export const InstallPwaModal: React.FC<InstallPwaModalProps> = ({ isOpen, onClose }) => {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+export const InstallPwaModal: React.FC<InstallPwaModalProps> = ({
+  isOpen,
+  onClose,
+  installPrompt: propInstallPrompt,
+  onInstallApp,
+  isAppInstalled: propIsAppInstalled,
+}) => {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(propInstallPrompt || null);
   const [isIOS, setIsIOS] = useState<boolean>(false);
-  const [isStandalone, setIsStandalone] = useState<boolean>(false);
-  const [installed, setInstalled] = useState<boolean>(false);
+  const [isStandalone, setIsStandalone] = useState<boolean>(propIsAppInstalled || false);
+  const [installed, setInstalled] = useState<boolean>(propIsAppInstalled || false);
   const [isInIframe, setIsInIframe] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (propInstallPrompt) {
+      setDeferredPrompt(propInstallPrompt);
+    }
+  }, [propInstallPrompt]);
+
+  useEffect(() => {
+    if (propIsAppInstalled) {
+      setIsStandalone(true);
+      setInstalled(true);
+    }
+  }, [propIsAppInstalled]);
 
   useEffect(() => {
     // Check if running inside iframe
@@ -26,7 +48,9 @@ export const InstallPwaModal: React.FC<InstallPwaModalProps> = ({ isOpen, onClos
     const isStandaloneApp =
       window.matchMedia('(display-mode: standalone)').matches ||
       (navigator as any).standalone === true;
-    setIsStandalone(isStandaloneApp);
+    if (isStandaloneApp) {
+      setIsStandalone(true);
+    }
 
     // Detect iOS
     const userAgent = window.navigator.userAgent.toLowerCase();
@@ -54,6 +78,10 @@ export const InstallPwaModal: React.FC<InstallPwaModalProps> = ({ isOpen, onClos
   if (!isOpen) return null;
 
   const handleInstallClick = async () => {
+    if (onInstallApp && propInstallPrompt) {
+      onInstallApp();
+      return;
+    }
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;

@@ -394,6 +394,9 @@ export default function App() {
         <InstallPwaModal
           isOpen={showPwaModal}
           onClose={() => setShowPwaModal(false)}
+          installPrompt={installPrompt}
+          onInstallApp={handleInstallApp}
+          isAppInstalled={isAppInstalled}
         />
       </div>
     </div>
