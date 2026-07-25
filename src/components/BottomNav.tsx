@@ -10,7 +10,7 @@ interface BottomNavProps {
 export const BottomNav: React.FC<BottomNavProps> = ({ currentScreen, onNavigate }) => {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-[100] bg-[#070D18]/95 backdrop-blur-2xl border-t-2 border-[#FF7A1A]/30 px-3 py-2 pb-safe shadow-[0_-8px_30px_rgba(0,0,0,0.8)]">
-      <div className="max-w-md mx-auto flex items-center justify-between relative">
+      <div className="max-w-md md:max-w-3xl lg:max-w-5xl mx-auto flex items-center justify-between relative px-2">
         {/* 1. المبيعات (Sales) - First on the right in RTL */}
         <button
           onClick={() => onNavigate('sales')}

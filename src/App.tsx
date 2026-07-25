@@ -109,6 +109,18 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [showBackupModal, setShowBackupModal] = useState<boolean>(false);
   const [showPwaModal, setShowPwaModal] = useState<boolean>(false);
+  const [isDesktopWide, setIsDesktopWide] = useState<boolean>(() => {
+    const saved = localStorage.getItem('bm_desktop_wide');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const toggleDesktopWide = () => {
+    setIsDesktopWide((prev) => {
+      const next = !prev;
+      localStorage.setItem('bm_desktop_wide', String(next));
+      return next;
+    });
+  };
 
   // Setup Real-time Listeners (onSnapshot)
   useEffect(() => {
@@ -244,8 +256,8 @@ export default function App() {
       <div className="fixed top-[-10%] right-[-10%] w-[50%] h-[50%] max-w-[500px] max-h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none z-0" />
       <div className="fixed bottom-[-10%] left-[-10%] w-[40%] h-[40%] max-w-[400px] max-h-[400px] bg-[#FF7A1A]/10 rounded-full blur-[100px] pointer-events-none z-0" />
 
-      {/* Container wrapper for mobile frame center alignment on desktop */}
-      <div className="w-full max-w-md mx-auto min-h-screen flex flex-col relative shadow-2xl bg-[#0B1220] z-10">
+      {/* Container wrapper for mobile frame or desktop wide alignment */}
+      <div className={`w-full ${isDesktopWide ? 'max-w-md md:max-w-4xl lg:max-w-6xl' : 'max-w-md'} mx-auto min-h-screen flex flex-col relative shadow-2xl bg-[#0B1220] z-10 transition-all duration-300`}>
         {/* Navbar */}
         <Navbar
           currentScreen={currentScreen}
@@ -254,6 +266,8 @@ export default function App() {
           clients={clients}
           onOpenBackup={() => setShowBackupModal(true)}
           onOpenInstallPwa={() => setShowPwaModal(true)}
+          isDesktopWide={isDesktopWide}
+          onToggleDesktopWide={toggleDesktopWide}
         />
 
         {/* Screen Content */}

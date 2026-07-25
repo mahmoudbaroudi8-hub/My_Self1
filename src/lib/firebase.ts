@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import {
   getFirestore,
+  enableMultiTabIndexedDbPersistence,
   collection,
   getDocs,
   addDoc,
@@ -30,6 +31,17 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 export const db = firebaseConfigData.firestoreDatabaseId
   ? getFirestore(app, firebaseConfigData.firestoreDatabaseId)
   : getFirestore(app);
+
+// Enable Firestore offline data persistence across tabs
+if (typeof window !== 'undefined') {
+  enableMultiTabIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firestore offline persistence failed: Multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Firestore offline persistence not supported in this browser');
+    }
+  });
+}
 
 // Seed Data helper
 export async function seedInitialDataIfEmpty() {

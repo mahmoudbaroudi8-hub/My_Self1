@@ -1,8 +1,10 @@
-const CACHE_NAME = 'business-manager-pwa-v1';
+const CACHE_NAME = 'business-manager-pwa-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/favicon.ico',
+  '/apple-touch-icon.png',
   '/pwa-192.png',
   '/pwa-512.png'
 ];
@@ -34,29 +36,38 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network first fallback to cache strategy for maximum freshness
   if (event.request.method !== 'GET') return;
   
+  // Ignore chrome-extension or external analytics
+  const url = new URL(event.request.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+  if (url.origin.includes('firestore.googleapis.com') || url.origin.includes('identitytoolkit.googleapis.com')) {
+    // Let Firestore JS SDK handle its own offline persistence via IndexedDB
+    return;
+  }
+
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response && response.status === 200) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
-      })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
+    caches.match(event.request).then((cachedResponse) => {
+      // Return cached response immediately if available, while updating cache in background
+      const fetchPromise = fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
           }
-          if (event.request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('/index.html');
+          return networkResponse;
+        })
+        .catch(() => {
+          // Network failed, fallback to index.html for navigation requests
+          if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
+            return caches.match('/index.html') || caches.match('/');
           }
+          return null;
         });
-      })
+
+      return cachedResponse || fetchPromise;
+    })
   );
 });

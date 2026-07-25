@@ -1,23 +1,28 @@
 {
   "short_name": "إدارة POS",
   "name": "Business Manager - إدارة أنظمة نقاط البيع",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#0B1220",
+  "theme_color": "#0B1220",
+  "dir": "rtl",
+  "lang": "ar",
+  "description": "برنامج مستقل لإدارة أنظمة نقاط البيع والمبيعات والمخزون والعملاء على الهاتف والكمبيوتر",
   "icons": [
     {
       "src": "/pwa-192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any maskable"
     },
     {
       "src": "/pwa-512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
-  ],
-  "start_url": "/",
-  "background_color": "#0B1220",
-  "theme_color": "#0B1220",
-  "display": "standalone",
-  "orientation": "portrait",
-  "dir": "rtl",
-  "lang": "ar"
+  ]
 }

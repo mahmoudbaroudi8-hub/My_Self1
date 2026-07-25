@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, Settings, User, X, CheckCircle2, Clock, AlertTriangle, ChevronRight, Receipt, Database, Smartphone } from 'lucide-react';
+import { Bell, Settings, User, X, CheckCircle2, Clock, AlertTriangle, ChevronRight, Receipt, Database, Smartphone, Monitor, LayoutGrid } from 'lucide-react';
 import { ScreenView, Sale, Client } from '../types';
 
 interface NavbarProps {
@@ -9,9 +9,20 @@ interface NavbarProps {
   clients?: Client[];
   onOpenBackup?: () => void;
   onOpenInstallPwa?: () => void;
+  isDesktopWide?: boolean;
+  onToggleDesktopWide?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ currentScreen, onNavigate, sales = [], clients = [], onOpenBackup, onOpenInstallPwa }) => {
+export const Navbar: React.FC<NavbarProps> = ({
+  currentScreen,
+  onNavigate,
+  sales = [],
+  clients = [],
+  onOpenBackup,
+  onOpenInstallPwa,
+  isDesktopWide = true,
+  onToggleDesktopWide
+}) => {
   const [showNotifications, setShowNotifications] = useState(false);
 
   const getScreenTitle = () => {
@@ -69,6 +80,19 @@ export const Navbar: React.FC<NavbarProps> = ({ currentScreen, onNavigate, sales
 
         {/* Left side actions */}
         <div className="flex items-center gap-1.5">
+          {/* PC Widescreen Toggle (hidden on small mobile screens) */}
+          {onToggleDesktopWide && (
+            <button
+              onClick={onToggleDesktopWide}
+              className={`hidden md:flex w-8 h-8 rounded-full glass-button items-center justify-center transition-all ${
+                isDesktopWide ? 'text-sky-400 bg-sky-500/10 border-sky-500/30' : 'text-gray-400'
+              }`}
+              title={isDesktopWide ? 'التبديل إلى العرض المحذى (شاشة الموبايل)' : 'التبديل إلى العرض الكامل (شاشة الكمبيوتر)'}
+            >
+              {isDesktopWide ? <Smartphone className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+            </button>
+          )}
+
           {/* PWA Mobile Install Button */}
           {onOpenInstallPwa && (
             <button
