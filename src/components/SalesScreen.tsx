@@ -1,25 +1,31 @@
 import React, { useState } from 'react';
-import { Receipt, Search, Filter, Check, Send, Trash2, Eye, Printer, Phone, Calendar, Globe, ExternalLink, Copy, FileSpreadsheet } from 'lucide-react';
-import { Sale, ScreenView } from '../types';
+import { Receipt, Search, Filter, Check, Send, Trash2, Eye, Printer, Phone, Calendar, Globe, ExternalLink, Copy, FileSpreadsheet, Edit3 } from 'lucide-react';
+import { Sale, Client, ScreenView } from '../types';
 import { exportSalesToExcel } from '../lib/excelExport';
 import { CorporateInvoiceModal } from './CorporateInvoiceModal';
 import { ProtectedDeleteModal } from './ProtectedDeleteModal';
 
 interface SalesScreenProps {
   sales: Sale[];
+  clients?: Client[];
   onUpdateSaleStatus: (id: string, status: 'mowakad' | 'morsal_qabl_dafa') => Promise<void>;
+  onEditSale?: (sale: Sale) => void;
   onDeleteSale: (id: string) => Promise<void>;
   onNavigate: (screen: ScreenView) => void;
 }
 
 export const SalesScreen: React.FC<SalesScreenProps> = ({
   sales,
+  clients,
   onUpdateSaleStatus,
+  onEditSale,
   onDeleteSale,
   onNavigate,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'mowakad' | 'morsal_qabl_dafa'>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<Sale | null>(null);
   const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
 
@@ -42,7 +48,12 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
       (s.projectUrl || '').toLowerCase().includes(query);
 
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
-    return matchesSearch && matchesStatus;
+
+    let matchesDate = true;
+    if (startDate && s.date < startDate) matchesDate = false;
+    if (endDate && s.date > endDate) matchesDate = false;
+
+    return matchesSearch && matchesStatus && matchesDate;
   });
 
   return (
@@ -82,7 +93,28 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
           />
         </div>
 
-        {/* Filter buttons */}
+        {/* Date filter & Status filter buttons */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] text-gray-400 mb-0.5 block">من تاريخ</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="glass-input w-full p-1.5 text-xs text-white"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-gray-400 mb-0.5 block">إلى تاريخ</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="glass-input w-full p-1.5 text-xs text-white"
+            />
+          </div>
+        </div>
+
         <div className="flex gap-2">
           <button
             onClick={() => setStatusFilter('all')}
@@ -207,6 +239,16 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
                     >
                       <Eye className="w-3.5 h-3.5 text-[#FF7A1A]" /> الفاتورة
                     </button>
+
+                    {onEditSale && (
+                      <button
+                        onClick={() => onEditSale(sale)}
+                        className="glass-button px-2.5 py-1 text-[11px] text-[#FF7A1A] flex items-center gap-1 hover:bg-[#FF7A1A]/20"
+                        title="تعديل تفاصيل الفاتورة والعميل"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" /> تعديل
+                      </button>
+                    )}
 
                     {sale.status === 'morsal_qabl_dafa' && (
                       <button

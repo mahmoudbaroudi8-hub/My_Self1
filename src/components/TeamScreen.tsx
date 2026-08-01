@@ -23,7 +23,8 @@ import {
   Check,
   RotateCcw,
   LayoutGrid,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Database
 } from 'lucide-react';
 import {
   TeamMember,
@@ -43,6 +44,7 @@ interface TeamScreenProps {
   onUpdateTeamMember: (id: string, member: Partial<TeamMember>) => Promise<void>;
   onDeleteTeamMember: (id: string) => Promise<void>;
   onSwitchUser: (member: TeamMember) => void;
+  onOpenBackup?: () => void;
 }
 
 export const TeamScreen: React.FC<TeamScreenProps> = ({
@@ -53,6 +55,7 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
   onUpdateTeamMember,
   onDeleteTeamMember,
   onSwitchUser,
+  onOpenBackup,
 }) => {
   const formRef = useRef<HTMLFormElement>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string>('new');
@@ -60,10 +63,12 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
   const [email, setEmail] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [whatsappPhone, setWhatsappPhone] = useState<string>('');
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [position, setPosition] = useState<TeamMemberPosition>('engineer');
   const [customPositionTitle, setCustomPositionTitle] = useState<string>('');
-  const [defaultCommissionRate, setDefaultCommissionRate] = useState<number>(30);
-  const [pinCode, setPinCode] = useState<string>('297062');
+  const [defaultCommissionRate, setDefaultCommissionRate] = useState<number>(10);
+  const [pinCode, setPinCode] = useState<string>('1234');
   const [isActive, setIsActive] = useState<boolean>(true);
 
   // Allowed screens state
@@ -117,9 +122,11 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
     setEmail(member.email || '');
     setPhone(member.phone || '');
     setWhatsappPhone(member.whatsappPhone || member.phone || '');
+    setUsername(member.username || '');
+    setPassword(member.password || '');
     setPosition(member.position);
     setCustomPositionTitle(member.customPositionTitle || '');
-    setDefaultCommissionRate(member.defaultCommissionRate || 0);
+    setDefaultCommissionRate(member.defaultCommissionRate ?? 10);
     setPinCode(member.pinCode || '1234');
     setIsActive(member.isActive !== false);
 
@@ -156,9 +163,11 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
     setEmail('');
     setPhone('');
     setWhatsappPhone('');
+    setUsername('');
+    setPassword('');
     setPosition('engineer');
     setCustomPositionTitle('');
-    setDefaultCommissionRate(30);
+    setDefaultCommissionRate(10);
     setPinCode('1234');
     setIsActive(true);
 
@@ -229,9 +238,12 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
         email: email.trim(),
         phone: phone.trim(),
         whatsappPhone: whatsappPhone.trim() || phone.trim(),
+        username: username.trim() || email.trim() || name.trim().toLowerCase().replace(/\s+/g, ''),
+        password: password.trim() || pinCode.trim() || '1234',
         position,
         customPositionTitle: position === 'custom' ? customPositionTitle.trim() : '',
-        defaultCommissionRate: Number(defaultCommissionRate) || 0,
+        defaultCommissionRate: Number(defaultCommissionRate) ?? 10,
+        defaultCommissionPercent: Number(defaultCommissionRate) ?? 10,
         pinCode: pinCode.trim() || '1234',
         isActive,
         allowedScreens,
@@ -375,7 +387,18 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {onOpenBackup && (
+                  <button
+                    type="button"
+                    onClick={onOpenBackup}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md"
+                    title="قاعدة البيانات والنسخ الاحتياطي (Backup & Restore)"
+                  >
+                    <Database className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>إدارة قاعدة البيانات والنسخ الاحتياطي</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleResetToOwnerOnly}
@@ -383,7 +406,7 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
                   title="حذف باقي الحسابات والاحتفاظ بـ 'البارودي' صاحب المشروع (297062) فقط"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>إعادة ضبط الحسابات لـ البارودي (297062)</span>
+                  <span>إعادة ضبط الحسابات</span>
                 </button>
               </div>
             </div>
@@ -762,7 +785,9 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
                 className="glass-input w-full p-2.5 text-xs font-bold text-[#FF7A1A]"
               >
                 <option value="owner">👑 صاحب المشروع ومطور (مدير عام)</option>
-                <option value="engineer">💻 مهندس / مطور برمجيات</option>
+                <option value="engineer">💻 مهندس برمجيات</option>
+                <option value="developer">⚡ مطور تطبيقات ونظم</option>
+                <option value="sales">💼 مسؤول مبيعات (سيلز)</option>
                 <option value="media_buyer">📢 ميديا مان / تسويق وإعلانات</option>
                 <option value="custom">🛠️ وظيفة مخصصة أخرى</option>
               </select>
@@ -773,13 +798,37 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
                 <label className="text-[11px] text-gray-300 mb-1 block">عنوان الوظيفة المخصصة *</label>
                 <input
                   type="text"
-                  placeholder="مثال: مصمم واجهات UI/UX أو مسؤول مبيعات"
+                  placeholder="مثال: مصمم واجهات UI/UX"
                   value={customPositionTitle}
                   onChange={(e) => setCustomPositionTitle(e.target.value)}
                   className="glass-input w-full p-2.5 text-xs font-medium"
                 />
               </div>
             )}
+
+            {/* Account Credentials (Username & Password for employee login) */}
+            <div className="grid grid-cols-2 gap-2.5 bg-black/30 p-2.5 rounded-xl border border-amber-500/20">
+              <div>
+                <label className="text-[11px] font-bold text-amber-300 mb-1 block">اسم المستخدم للدخول</label>
+                <input
+                  type="text"
+                  placeholder="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="glass-input w-full p-2.5 text-xs dir-ltr font-bold text-[#FF7A1A]"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-amber-300 mb-1 block">كلمة المرور للدخول</label>
+                <input
+                  type="text"
+                  placeholder="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="glass-input w-full p-2.5 text-xs dir-ltr font-bold text-[#FF7A1A]"
+                />
+              </div>
+            </div>
 
             {/* Email, Phone & WhatsApp */}
             <div className="grid grid-cols-2 gap-2.5">

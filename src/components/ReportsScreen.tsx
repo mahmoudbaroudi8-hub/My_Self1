@@ -1,25 +1,26 @@
 import React from 'react';
 import { BarChart3, TrendingUp, DollarSign, Wallet, Store, ShieldCheck, AlertCircle, PieChart, FileSpreadsheet } from 'lucide-react';
-import { Sale, Expense, Client, Package, SystemType } from '../types';
+import { Sale, Expense, Client, Package, Payment, SystemType } from '../types';
 import { exportFullReportToExcel } from '../lib/excelExport';
 
 interface ReportsScreenProps {
   sales: Sale[];
   expenses: Expense[];
+  payments?: Payment[];
   clients?: Client[];
   packages?: Package[];
 }
 
-export const ReportsScreen: React.FC<ReportsScreenProps> = ({ sales, expenses, clients = [], packages = [] }) => {
-  const confirmedSales = sales.filter((s) => s.status === 'mowakad');
-  const totalRevenue = confirmedSales.reduce((sum, s) => sum + (s.finalInvoice || 0), 0);
+export const ReportsScreen: React.FC<ReportsScreenProps> = ({ sales, expenses, payments = [], clients = [], packages = [] }) => {
+  const initialSalesPaid = sales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+  const totalExtraPayments = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalRevenue = initialSalesPaid + totalExtraPayments;
+
   const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   const netProfit = totalRevenue - totalExpenses;
 
-  const totalDebt = sales.reduce((acc, curr) => {
-    const debt = (curr.finalInvoice || 0) - (curr.paidAmount || 0);
-    return acc + (debt > 0 ? debt : 0);
-  }, 0);
+  const totalInvoiced = sales.reduce((acc, curr) => acc + (curr.finalInvoice || 0), 0);
+  const totalDebt = Math.max(0, totalInvoiced - totalRevenue);
 
   const pendingSalesTotal = sales
     .filter((s) => s.status === 'morsal_qabl_dafa')

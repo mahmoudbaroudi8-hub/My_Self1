@@ -16,17 +16,31 @@ import {
   Globe
 } from 'lucide-react';
 import { Accordion } from './Accordion';
-import { Client, Package, Offer, Sale, SystemType, CategoryType, DeviceItem, VisitItem, ScreenView, ItemType, getCategoriesForSystem } from '../types';
+import { Client, Package, Offer, Sale, SystemType, CategoryType, DeviceItem, VisitItem, ScreenView, ItemType, getCategoriesForSystem, TeamMember, POSITION_LABELS, EmployeeCommissionItem } from '../types';
 
 interface PosScreenProps {
   clients: Client[];
   packages: Package[];
   offers: Offer[];
+  teamMembers?: TeamMember[];
+  editingSale?: Sale | null;
   onSaveSale: (sale: Omit<Sale, 'id'>) => Promise<void>;
+  onUpdateSale?: (id: string, sale: Partial<Sale>) => Promise<void>;
+  onCancelEdit?: () => void;
   onNavigate: (screen: ScreenView) => void;
 }
 
-export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers, onSaveSale, onNavigate }) => {
+export const PosScreen: React.FC<PosScreenProps> = ({
+  clients,
+  packages,
+  offers,
+  teamMembers = [],
+  editingSale,
+  onSaveSale,
+  onUpdateSale,
+  onCancelEdit,
+  onNavigate,
+}) => {
   // Form State
   const [selectedSystem, setSelectedSystem] = useState<SystemType>('محلات');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('سوبر ماركت');
@@ -39,6 +53,7 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState<string>(today);
   const [deliveryDate, setDeliveryDate] = useState<string>(today);
+  const [nextVisitDate, setNextVisitDate] = useState<string>('');
 
   // Subscription Item Type: Package vs Offer
   const [itemType, setItemType] = useState<ItemType>('package');
@@ -79,6 +94,87 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
   const [paidAmount, setPaidAmount] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  // Assigned Employees & Commission Rates State
+  const [assignedEmployees, setAssignedEmployees] = useState<EmployeeCommissionItem[]>([]);
+
+  // Populating editingSale when passed
+  useEffect(() => {
+    if (editingSale) {
+      if (editingSale.system) setSelectedSystem(editingSale.system);
+      if (editingSale.category) setSelectedCategory(editingSale.category);
+      if (editingSale.clientId) setSelectedClientId(editingSale.clientId);
+      setClientName(editingSale.clientName || '');
+      setShopName(editingSale.shopName || '');
+      setPhone(editingSale.phone || '');
+      setProjectUrl(editingSale.projectUrl || '');
+      setDate(editingSale.date || today);
+      setDeliveryDate(editingSale.deliveryDate || today);
+      setNextVisitDate(editingSale.nextVisitDate || '');
+      setItemType(editingSale.itemType || 'package');
+      setSelectedPackageId(editingSale.packageId || '');
+      setSelectedOfferId(editingSale.offerId || '');
+      setPackageName(editingSale.packageName || '');
+      setPackagePrice(editingSale.packagePrice || 0);
+      setOfferDuration(editingSale.offerDuration || '');
+      setDiscount(editingSale.discount || 0);
+      setPaidAmount(editingSale.paidAmount || 0);
+
+      // Populate assigned employees
+      if (editingSale.employeeCommissions && editingSale.employeeCommissions.length > 0) {
+        setAssignedEmployees(editingSale.employeeCommissions);
+      } else if (editingSale.assignedEmployeeId) {
+        setAssignedEmployees([
+          {
+            employeeId: editingSale.assignedEmployeeId,
+            employeeName: editingSale.assignedEmployeeName || 'موظف مسؤول',
+            commissionPercent: editingSale.employeeCommissionRate || 10,
+            commissionAmount: ((editingSale.finalInvoice || 0) * (editingSale.employeeCommissionRate || 10)) / 100,
+          },
+        ]);
+      }
+
+      if (editingSale.devices && editingSale.devices.length > 0) {
+        const defaultDevices = [
+          { name: 'جهاز كاشير لمس متكامل', price: 8500, enabled: false },
+          { name: 'شاشة لمس إضافية للعميل', price: 3500, enabled: false },
+          { name: 'طابعة فواتير حرارية 80mm', price: 1800, enabled: false },
+          { name: 'قارئ باركود ليزري أوتوماتيك', price: 1200, enabled: false },
+          { name: 'درج نقدية حديدي 5 خانات', price: 950, enabled: false },
+          { name: 'طابعة باركود ملصقات حرارية', price: 2800, enabled: false },
+          { name: 'طقم ماوس وكيبورد لاسلكي', price: 450, enabled: false },
+        ];
+        const merged = defaultDevices.map((d) => {
+          const match = editingSale.devices.find((sd) => sd.name === d.name);
+          return match ? { ...d, enabled: true, price: match.price } : d;
+        });
+        editingSale.devices.forEach((sd) => {
+          if (!merged.some((m) => m.name === sd.name)) {
+            merged.push({ ...sd, enabled: true });
+          }
+        });
+        setDevices(merged);
+      }
+
+      if (editingSale.visits && editingSale.visits.length > 0) {
+        const defaultVisits = [
+          { type: 'زيارة تركيب وتدريب الموقع', price: 500, enabled: false },
+          { type: 'زيارة دعم فني ومتابعة ميدانية', price: 300, enabled: false },
+          { type: 'زيارة صيانة وبرمجة الأجهزة', price: 400, enabled: false },
+        ];
+        const merged = defaultVisits.map((v) => {
+          const match = editingSale.visits.find((sv) => sv.type === v.type);
+          return match ? { ...v, enabled: true, price: match.price } : v;
+        });
+        editingSale.visits.forEach((sv) => {
+          if (!merged.some((m) => m.type === sv.type)) {
+            merged.push({ ...sv, enabled: true });
+          }
+        });
+        setVisits(merged);
+      }
+    }
+  }, [editingSale]);
 
   // Filter packages based on selected system & category
   const filteredPackages = packages.filter(
@@ -187,10 +283,53 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
   const subtotal = (Number(packagePrice) || 0) + devicesTotal + visitsTotal;
   const finalInvoice = Math.max(0, subtotal - (Number(discount) || 0));
 
-  // Auto set paidAmount to finalInvoice if user hasn't explicitly edited paidAmount
+  // Auto set paidAmount to finalInvoice if user hasn't explicitly edited paidAmount (and not editing)
   useEffect(() => {
-    setPaidAmount(finalInvoice);
-  }, [finalInvoice]);
+    if (!editingSale) {
+      setPaidAmount(finalInvoice);
+    }
+  }, [finalInvoice, editingSale]);
+
+  const handleAddEmployeeToSale = (empId: string) => {
+    if (!empId) return;
+    const emp = teamMembers.find((m) => m.id === empId);
+    if (!emp) return;
+
+    if (assignedEmployees.some((item) => item.employeeId === emp.id)) {
+      return;
+    }
+
+    const defaultRate = emp.defaultCommissionRate ?? 10;
+    setAssignedEmployees([
+      ...assignedEmployees,
+      {
+        employeeId: emp.id,
+        employeeName: emp.name,
+        position: emp.position,
+        commissionPercent: defaultRate,
+        commissionAmount: (finalInvoice * defaultRate) / 100,
+      },
+    ]);
+  };
+
+  const handleRemoveEmployeeFromSale = (empId: string) => {
+    setAssignedEmployees(assignedEmployees.filter((item) => item.employeeId !== empId));
+  };
+
+  const handleUpdateEmployeeCommissionRate = (empId: string, rate: number) => {
+    setAssignedEmployees(
+      assignedEmployees.map((item) => {
+        if (item.employeeId === empId) {
+          return {
+            ...item,
+            commissionPercent: rate,
+            commissionAmount: (finalInvoice * rate) / 100,
+          };
+        }
+        return item;
+      })
+    );
+  };
 
   const handleSubmitSale = async (status: 'mowakad' | 'morsal_qabl_dafa') => {
     if (!shopName.trim() && !clientName.trim()) {
@@ -200,6 +339,11 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
 
     setIsSubmitting(true);
     try {
+      const finalEmployeeCommissions = assignedEmployees.map((item) => ({
+        ...item,
+        commissionAmount: (finalInvoice * (Number(item.commissionPercent) || 0)) / 100,
+      }));
+
       const saleData: Omit<Sale, 'id'> = {
         clientId: selectedClientId || undefined,
         clientName: clientName || shopName,
@@ -209,6 +353,7 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
         category: selectedCategory,
         date: date || today,
         deliveryDate: deliveryDate || today,
+        nextVisitDate: nextVisitDate.trim() || undefined,
         itemType,
         packageId: itemType === 'package' ? (selectedPackageId || undefined) : undefined,
         offerId: itemType === 'offer' ? (selectedOfferId || undefined) : undefined,
@@ -225,10 +370,18 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
         paidAmount: Number(paidAmount) || 0,
         status,
         projectUrl: projectUrl.trim() || undefined,
-        createdAt: new Date().toISOString(),
+        assignedEmployeeId: finalEmployeeCommissions[0]?.employeeId,
+        assignedEmployeeName: finalEmployeeCommissions[0]?.employeeName,
+        employeeCommissionRate: finalEmployeeCommissions[0]?.commissionPercent,
+        employeeCommissions: finalEmployeeCommissions,
+        createdAt: editingSale?.createdAt || new Date().toISOString(),
       };
 
-      await onSaveSale(saleData);
+      if (editingSale && onUpdateSale) {
+        await onUpdateSale(editingSale.id, saleData);
+      } else {
+        await onSaveSale(saleData);
+      }
       setShowSuccessModal(true);
     } catch (err) {
       console.error('Error saving sale:', err);
@@ -241,17 +394,32 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
   return (
     <div className="space-y-4 pb-28 pt-2">
       {/* Top Banner */}
-      <div className="glass-card p-4 bg-gradient-to-r from-[#FF7A1A]/20 to-amber-500/10 border border-[#FF7A1A]/30">
+      <div className={`glass-card p-4 border ${editingSale ? 'bg-[#FF7A1A]/20 border-[#FF7A1A]' : 'bg-gradient-to-r from-[#FF7A1A]/20 to-amber-500/10 border-[#FF7A1A]/30'}`}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-white">تسجيل فاتورة بيع جديدة</h2>
-            <p className="text-[11px] text-gray-300">حدد البيانات والأجهزة والزيارات لاحتساب الإجمالي</p>
+            <h2 className="text-sm font-bold text-white flex items-center gap-2">
+              {editingSale ? '📝 وضع تعديل عملية بيع سابقة' : 'تسجيل فاتورة بيع جديدة'}
+            </h2>
+            <p className="text-[11px] text-gray-300">
+              {editingSale ? `تعديل البيانات للعميل: ${editingSale.clientName || editingSale.shopName}` : 'حدد البيانات والأجهزة والزيارات لاحتساب الإجمالي'}
+            </p>
           </div>
-          <div className="text-left">
-            <span className="text-[10px] text-gray-400 block">إجمالي الفاتورة الحالية</span>
-            <span className="text-xl font-extrabold text-[#FF7A1A]">
-              {finalInvoice.toLocaleString('ar-EG')} <span className="text-xs">ج.م</span>
-            </span>
+          <div className="text-left flex items-center gap-3">
+            <div>
+              <span className="text-[10px] text-gray-400 block">إجمالي الفاتورة</span>
+              <span className="text-xl font-extrabold text-[#FF7A1A]">
+                {finalInvoice.toLocaleString('ar-EG')} <span className="text-xs">ج.م</span>
+              </span>
+            </div>
+            {editingSale && onCancelEdit && (
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs text-gray-200 border border-white/20"
+              >
+                إلغاء التعديل
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -661,9 +829,124 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
             </button>
           </div>
 
+          {/* Next Visit Date Reminder */}
+          <div className="pt-2 border-t border-white/10 space-y-1">
+            <label className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5" /> تاريخ الزيارة أو المتابعة القادمة (اختياري)
+            </label>
+            <input
+              type="date"
+              value={nextVisitDate}
+              onChange={(e) => setNextVisitDate(e.target.value)}
+              className="glass-input w-full p-2 text-xs font-medium text-emerald-300"
+            />
+          </div>
+
           <div className="text-left text-xs font-bold text-gray-300 pt-1">
             إجمالي الزيارات: <span className="text-emerald-400">{visitsTotal.toLocaleString('ar-EG')} ج.م</span>
           </div>
+        </div>
+      </Accordion>
+
+      {/* 4.5 Accordion: Employee Assignment & Commissions */}
+      <Accordion
+        title="إسناد الموظفين المباشر والعمولات"
+        icon={<UserPlus className="w-4 h-4" />}
+        badge={assignedEmployees.length > 0 ? `${assignedEmployees.length} موظف مُسند` : 'اختياري'}
+        defaultOpen={assignedEmployees.length > 0}
+      >
+        <div className="space-y-3 pt-2">
+          {/* Employee Selection Dropdown */}
+          <div>
+            <label className="text-[11px] text-gray-300 mb-1 block font-semibold">
+              اختر موظف لإسناد العملية وحساب عمولته:
+            </label>
+            <select
+              onChange={(e) => {
+                handleAddEmployeeToSale(e.target.value);
+                e.target.value = '';
+              }}
+              defaultValue=""
+              className="glass-input w-full p-2.5 text-xs text-[#FF7A1A] font-bold"
+            >
+              <option value="" disabled>
+                + اختر موظف من قائمة الفريق...
+              </option>
+              {teamMembers
+                .filter((m) => m.isActive !== false)
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({POSITION_LABELS[m.position] || m.position}) - العمولة الافتراضية: {m.defaultCommissionRate || 10}%
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {/* Assigned Employees List Cards */}
+          {assignedEmployees.length > 0 ? (
+            <div className="space-y-2">
+              <span className="text-[10px] text-gray-400 block font-medium">الموظفون المسندون ونسب العمولات القابلة للتعديل:</span>
+              {assignedEmployees.map((emp) => {
+                const commAmount = (finalInvoice * (Number(emp.commissionPercent) || 0)) / 100;
+
+                return (
+                  <div
+                    key={emp.employeeId}
+                    className="p-3 rounded-xl bg-black/40 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-[#FF7A1A]/20 flex items-center justify-center text-[#FF7A1A] font-bold text-xs">
+                        👤
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white">{emp.employeeName}</div>
+                        <span className="text-[10px] text-[#FF7A1A] font-medium">
+                          {POSITION_LABELS[emp.position as any] || emp.position || 'موظف'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {/* Commission Percentage Input */}
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-[10px] text-gray-400">نسبة العمولة %:</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={emp.commissionPercent}
+                          onChange={(e) =>
+                            handleUpdateEmployeeCommissionRate(emp.employeeId, parseFloat(e.target.value) || 0)
+                          }
+                          className="glass-input w-16 p-1.5 text-xs text-center font-bold text-[#FF7A1A]"
+                        />
+                      </div>
+
+                      {/* Calculated Commission Amount Preview */}
+                      <div className="text-left bg-emerald-500/15 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                        <span className="text-[9px] text-emerald-300 block">العمولة المستحقة</span>
+                        <span className="text-xs font-black text-emerald-400">
+                          {commAmount.toLocaleString('ar-EG')} ج.م
+                        </span>
+                      </div>
+
+                      {/* Remove Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveEmployeeFromSale(emp.employeeId)}
+                        className="p-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors"
+                        title="إلغاء إسناد الموظف"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-400 italic">لم يتم إسناد أي موظف لهذه العملية بعد (يمكنك تركها بدون إسناد أو اختيار موظف).</p>
+          )}
         </div>
       </Accordion>
 
@@ -732,10 +1015,10 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
             type="button"
             disabled={isSubmitting}
             onClick={() => handleSubmitSale('mowakad')}
-            className="btn-orange w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+            className="btn-orange w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg active:scale-95 transition-all"
           >
             <Check className="w-5 h-5" />
-            {isSubmitting ? 'جاري الحفظ...' : 'تأكيد العملية وتسجيل المبيعات'}
+            {isSubmitting ? 'جاري الحفظ والتحديث...' : (editingSale ? 'تأكيد وحفظ التعديلات' : 'تأكيد العملية وتسجيل المبيعات')}
           </button>
 
           {/* Send Before Payment Button */}
@@ -743,10 +1026,10 @@ export const PosScreen: React.FC<PosScreenProps> = ({ clients, packages, offers,
             type="button"
             disabled={isSubmitting}
             onClick={() => handleSubmitSale('morsal_qabl_dafa')}
-            className="glass-button w-full py-3 rounded-xl font-semibold text-xs text-gray-200 hover:text-white flex items-center justify-center gap-2 hover:bg-white/10"
+            className="glass-button w-full py-3 rounded-xl font-semibold text-xs text-gray-200 hover:text-white flex items-center justify-center gap-2 hover:bg-white/10 cursor-pointer active:scale-95 transition-all"
           >
             <Send className="w-4 h-4 text-amber-400" />
-            إرسال قبل الدفع (حفظ كـ مسودة)
+            {editingSale ? 'حفظ التعديل كـ مسودة (قبل الدفع)' : 'إرسال قبل الدفع (حفظ كـ مسودة)'}
           </button>
         </div>
       </div>

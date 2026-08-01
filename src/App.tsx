@@ -22,6 +22,9 @@ import {
   getExpenses,
   addExpense,
   deleteExpense,
+  getPayments,
+  addPayment,
+  deletePayment,
   getTeamMembers,
   addTeamMember,
   updateTeamMember,
@@ -32,10 +35,11 @@ import {
   subscribeOffers,
   subscribeSales,
   subscribeExpenses,
+  subscribePayments,
   subscribeProjects,
   subscribeTeamMembers,
 } from './lib/firebase';
-import { Client, Package, Offer, ProjectItem, Sale, Expense, TeamMember, SystemType, ScreenView, ALL_SCREENS_CONFIG } from './types';
+import { Client, Package, Offer, ProjectItem, Sale, Expense, Payment, TeamMember, SystemType, ScreenView, ALL_SCREENS_CONFIG } from './types';
 import { Lock } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
@@ -66,17 +70,40 @@ export default function App() {
 
   // PWA Install Prompt State
   const [installPrompt, setInstallPrompt] = useState<any>(null);
-  const [isAppInstalled, setIsAppInstalled] = useState<boolean>(false);
+  const [isAppInstalled, setIsAppInstalled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as any).standalone === true;
+      return isStandalone;
+    }
+    return false;
+  });
 
   useEffect(() => {
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as any).standalone === true;
+    if (isStandalone) {
+      setIsAppInstalled(true);
+    }
+
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setInstallPrompt(e);
+      // If browser fires beforeinstallprompt, app is not installed
+      const currentStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as any).standalone === true;
+      if (!currentStandalone) {
+        setIsAppInstalled(false);
+      }
     };
 
     const handleAppInstalled = () => {
       setIsAppInstalled(true);
       setInstallPrompt(null);
+      setShowPwaModal(false);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -114,8 +141,12 @@ export default function App() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [currentUser, setCurrentUser] = useState<TeamMember | null>(null);
+
+  // Active Sale being edited
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [showBackupModal, setShowBackupModal] = useState<boolean>(false);
@@ -142,6 +173,7 @@ export default function App() {
     let unsubOffers: (() => void) | undefined;
     let unsubSales: (() => void) | undefined;
     let unsubExpenses: (() => void) | undefined;
+    let unsubPayments: (() => void) | undefined;
     let unsubProjects: (() => void) | undefined;
     let unsubTeam: (() => void) | undefined;
 
@@ -155,10 +187,18 @@ export default function App() {
         unsubOffers = subscribeOffers((oList) => setOffers(oList));
         unsubSales = subscribeSales((sList) => setSales(sList));
         unsubExpenses = subscribeExpenses((eList) => setExpenses(eList));
+        unsubPayments = subscribePayments((payList) => setPayments(payList));
         unsubProjects = subscribeProjects((prList) => setProjects(prList));
         unsubTeam = subscribeTeamMembers((tList) => {
           setTeamMembers(tList);
-          // Default active user to Owner or first team member if none set
+          const activeUserId = localStorage.getItem('bm_active_user_id') || sessionStorage.getItem('bm_active_user_id');
+          if (activeUserId) {
+            const foundEmp = tList.find((m) => m.id === activeUserId);
+            if (foundEmp) {
+              setCurrentUser(foundEmp);
+              return;
+            }
+          }
           setCurrentUser((prev) => {
             if (prev) {
               const updated = tList.find((m) => m.id === prev.id);
@@ -183,6 +223,7 @@ export default function App() {
       if (unsubOffers) unsubOffers();
       if (unsubSales) unsubSales();
       if (unsubExpenses) unsubExpenses();
+      if (unsubPayments) unsubPayments();
       if (unsubProjects) unsubProjects();
       if (unsubTeam) unsubTeam();
     };
@@ -246,12 +287,26 @@ export default function App() {
     await addSale(saleData);
   };
 
+  const handleEditSale = (sale: Sale) => {
+    setEditingSale(sale);
+    setCurrentScreen('pos');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleUpdateSaleFull = async (id: string, saleData: Partial<Sale>) => {
+    await updateSale(id, saleData);
+    setEditingSale(null);
+  };
+
   const handleUpdateSaleStatus = async (id: string, status: 'mowakad' | 'morsal_qabl_dafa') => {
     await updateSale(id, { status });
   };
 
   const handleDeleteSale = async (id: string) => {
     await deleteSale(id);
+    if (editingSale?.id === id) {
+      setEditingSale(null);
+    }
   };
 
   const handleAddExpense = async (expenseData: Omit<Expense, 'id'>) => {
@@ -262,11 +317,25 @@ export default function App() {
     await deleteExpense(id);
   };
 
+  const handleAddPayment = async (paymentData: Omit<Payment, 'id'>) => {
+    return await addPayment(paymentData);
+  };
+
+  const handleDeletePayment = async (id: string) => {
+    await deletePayment(id);
+  };
+
   // If not logged in, render LoginScreen
   if (!isLoggedIn) {
     return (
       <LoginScreen
-        onLoginSuccess={() => setIsLoggedIn(true)}
+        teamMembers={teamMembers}
+        onLoginSuccess={(member) => {
+          if (member) {
+            setCurrentUser(member);
+          }
+          setIsLoggedIn(true);
+        }}
         savedUsername={localStorage.getItem('bm_username') || 'admin'}
         installPrompt={installPrompt}
         onInstallApp={handleInstallApp}
@@ -298,7 +367,8 @@ export default function App() {
           clients={clients}
           currentUser={currentUser}
           onOpenBackup={() => setShowBackupModal(true)}
-          onOpenInstallPwa={() => setShowPwaModal(true)}
+          onOpenInstallPwa={!isAppInstalled ? () => setShowPwaModal(true) : undefined}
+          isAppInstalled={isAppInstalled}
           isDesktopWide={isDesktopWide}
           onToggleDesktopWide={toggleDesktopWide}
         />
@@ -336,8 +406,15 @@ export default function App() {
                     <HomeScreen
                       sales={sales}
                       expenses={expenses}
+                      payments={payments}
+                      clients={clients}
+                      currentUser={currentUser}
+                      teamMembers={teamMembers}
+                      isAppInstalled={isAppInstalled}
                       onNavigate={handleNavigate}
-                      onOpenInstallPwa={() => setShowPwaModal(true)}
+                      onEditSale={handleEditSale}
+                      onDeleteSale={handleDeleteSale}
+                      onOpenInstallPwa={!isAppInstalled ? () => setShowPwaModal(true) : undefined}
                     />
                   )}
 
@@ -346,7 +423,11 @@ export default function App() {
                       clients={clients}
                       packages={packages}
                       offers={offers}
+                      teamMembers={teamMembers}
+                      editingSale={editingSale}
                       onSaveSale={handleSaveSale}
+                      onUpdateSale={handleUpdateSaleFull}
+                      onCancelEdit={() => setEditingSale(null)}
                       onNavigate={handleNavigate}
                     />
                   )}
@@ -359,7 +440,12 @@ export default function App() {
                     <ClientsScreen
                       clients={clients}
                       sales={sales}
+                      payments={payments}
                       onDeleteClient={handleDeleteClient}
+                      onAddPayment={handleAddPayment}
+                      onDeletePayment={handleDeletePayment}
+                      onEditSale={handleEditSale}
+                      onDeleteSale={handleDeleteSale}
                       onNavigate={handleNavigate}
                     />
                   )}
@@ -392,6 +478,7 @@ export default function App() {
                       projects={projects}
                       currentUser={currentUser}
                       onSwitchUser={(user) => setCurrentUser(user)}
+                      onOpenBackup={() => setShowBackupModal(true)}
                       onAddTeamMember={(m) => addTeamMember(m)}
                       onUpdateTeamMember={async (id, m) => {
                         await updateTeamMember(id, m);
@@ -407,6 +494,7 @@ export default function App() {
                       sectorName={selectedSector}
                       sales={sales}
                       expenses={expenses}
+                      payments={payments}
                       clients={clients}
                       onNavigate={handleNavigate}
                     />
@@ -415,7 +503,9 @@ export default function App() {
                   {currentScreen === 'sales' && (
                     <SalesScreen
                       sales={sales}
+                      clients={clients}
                       onUpdateSaleStatus={handleUpdateSaleStatus}
+                      onEditSale={handleEditSale}
                       onDeleteSale={handleDeleteSale}
                       onNavigate={handleNavigate}
                     />
@@ -433,6 +523,7 @@ export default function App() {
                     <ReportsScreen
                       sales={sales}
                       expenses={expenses}
+                      payments={payments}
                       clients={clients}
                       packages={packages}
                     />

@@ -16,12 +16,13 @@ import {
   DollarSign,
   Plus
 } from 'lucide-react';
-import { Sale, Expense, Client, SystemType, CategoryType, ScreenView, getCategoriesForSystem } from '../types';
+import { Sale, Expense, Payment, Client, SystemType, CategoryType, ScreenView, getCategoriesForSystem } from '../types';
 
 interface SectorScreenProps {
   sectorName: SystemType;
   sales: Sale[];
   expenses: Expense[];
+  payments?: Payment[];
   clients: Client[];
   onNavigate: (screen: ScreenView, sector?: SystemType) => void;
 }
@@ -30,6 +31,7 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
   sectorName,
   sales,
   expenses,
+  payments = [],
   clients,
   onNavigate,
 }) => {
@@ -37,17 +39,22 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
 
   // Filter sales & expenses for this sector
   const sectorSales = sales.filter((s) => s.system === sectorName);
-  const sectorConfirmedSales = sectorSales.filter((s) => s.status === 'mowakad');
-  const sectorRevenue = sectorConfirmedSales.reduce((acc, curr) => acc + (curr.finalInvoice || 0), 0);
+  const sectorPaidSales = sectorSales.reduce((acc, curr) => acc + (curr.paidAmount || 0), 0);
+  
+  // Extra payments for clients in this sector
+  const sectorClientIds = new Set(sectorSales.map((s) => s.clientId).filter(Boolean));
+  const sectorPayments = payments
+    .filter((p) => sectorClientIds.has(p.clientId))
+    .reduce((acc, curr) => acc + (curr.amount || 0), 0);
+
+  const sectorRevenue = sectorPaidSales + sectorPayments;
 
   const sectorExpenses = expenses
     .filter((e) => e.system === sectorName)
     .reduce((acc, curr) => acc + (curr.amount || 0), 0);
 
-  const sectorDebt = sectorSales.reduce((acc, curr) => {
-    const debt = (curr.finalInvoice || 0) - (curr.paidAmount || 0);
-    return acc + (debt > 0 ? debt : 0);
-  }, 0);
+  const sectorInvoiced = sectorSales.reduce((acc, curr) => acc + (curr.finalInvoice || 0), 0);
+  const sectorDebt = Math.max(0, sectorInvoiced - sectorRevenue);
 
   // Color and icon variants for dynamic sub-categories
   const colorVariants = [

@@ -15,7 +15,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import firebaseConfigData from '../../firebase-applet-config.json';
-import { Client, Package, Offer, Sale, Expense, ProjectItem, TeamMember, SystemType, CategoryType } from '../types';
+import { Client, Package, Offer, Sale, Expense, Payment, ProjectItem, TeamMember, SystemType, CategoryType } from '../types';
 
 const firebaseConfig = {
   apiKey: firebaseConfigData.apiKey,
@@ -387,6 +387,17 @@ export async function seedInitialDataIfEmpty() {
   }
 }
 
+// Helper function to remove undefined values before writing to Firestore
+function sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
+  const cleaned: Record<string, any> = {};
+  Object.keys(obj).forEach((key) => {
+    if (obj[key] !== undefined) {
+      cleaned[key] = obj[key];
+    }
+  });
+  return cleaned as T;
+}
+
 // Client CRUD
 export async function getClients(): Promise<Client[]> {
   const querySnap = await getDocs(collection(db, 'clients'));
@@ -397,7 +408,7 @@ export async function getClients(): Promise<Client[]> {
 }
 
 export async function addClient(client: Omit<Client, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, 'clients'), client);
+  const docRef = await addDoc(collection(db, 'clients'), sanitizeForFirestore(client));
   return docRef.id;
 }
 
@@ -415,12 +426,12 @@ export async function getPackages(): Promise<Package[]> {
 }
 
 export async function addPackage(pkg: Omit<Package, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, 'packages'), pkg);
+  const docRef = await addDoc(collection(db, 'packages'), sanitizeForFirestore(pkg));
   return docRef.id;
 }
 
 export async function updatePackage(id: string, pkg: Partial<Package>): Promise<void> {
-  await updateDoc(doc(db, 'packages', id), pkg);
+  await updateDoc(doc(db, 'packages', id), sanitizeForFirestore(pkg));
 }
 
 export async function deletePackage(id: string): Promise<void> {
@@ -437,12 +448,12 @@ export async function getOffers(): Promise<Offer[]> {
 }
 
 export async function addOffer(offer: Omit<Offer, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, 'offers'), offer);
+  const docRef = await addDoc(collection(db, 'offers'), sanitizeForFirestore(offer));
   return docRef.id;
 }
 
 export async function updateOffer(id: string, offer: Partial<Offer>): Promise<void> {
-  await updateDoc(doc(db, 'offers', id), offer);
+  await updateDoc(doc(db, 'offers', id), sanitizeForFirestore(offer));
 }
 
 export async function deleteOffer(id: string): Promise<void> {
@@ -459,12 +470,12 @@ export async function getSales(): Promise<Sale[]> {
 }
 
 export async function addSale(sale: Omit<Sale, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, 'sales'), sale);
+  const docRef = await addDoc(collection(db, 'sales'), sanitizeForFirestore(sale));
   return docRef.id;
 }
 
 export async function updateSale(id: string, sale: Partial<Sale>): Promise<void> {
-  await updateDoc(doc(db, 'sales', id), sale);
+  await updateDoc(doc(db, 'sales', id), sanitizeForFirestore(sale));
 }
 
 export async function deleteSale(id: string): Promise<void> {
@@ -481,12 +492,30 @@ export async function getExpenses(): Promise<Expense[]> {
 }
 
 export async function addExpense(expense: Omit<Expense, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, 'expenses'), expense);
+  const docRef = await addDoc(collection(db, 'expenses'), sanitizeForFirestore(expense));
   return docRef.id;
 }
 
 export async function deleteExpense(id: string): Promise<void> {
   await deleteDoc(doc(db, 'expenses', id));
+}
+
+// Payment CRUD
+export async function getPayments(): Promise<Payment[]> {
+  const querySnap = await getDocs(collection(db, 'payments'));
+  return querySnap.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as Payment[];
+}
+
+export async function addPayment(payment: Omit<Payment, 'id'>): Promise<string> {
+  const docRef = await addDoc(collection(db, 'payments'), sanitizeForFirestore(payment));
+  return docRef.id;
+}
+
+export async function deletePayment(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'payments', id));
 }
 
 // Project CRUD
@@ -499,12 +528,12 @@ export async function getProjects(): Promise<ProjectItem[]> {
 }
 
 export async function addProject(project: Omit<ProjectItem, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, 'projects'), project);
+  const docRef = await addDoc(collection(db, 'projects'), sanitizeForFirestore(project));
   return docRef.id;
 }
 
 export async function updateProject(id: string, project: Partial<ProjectItem>): Promise<void> {
-  await updateDoc(doc(db, 'projects', id), project);
+  await updateDoc(doc(db, 'projects', id), sanitizeForFirestore(project));
 }
 
 export async function deleteProject(id: string): Promise<void> {
@@ -560,6 +589,16 @@ export function subscribeExpenses(callback: (expenses: Expense[]) => void): () =
     })) as Expense[];
     callback(list);
   }, (err) => console.error('Error listening to expenses:', err));
+}
+
+export function subscribePayments(callback: (payments: Payment[]) => void): () => void {
+  return onSnapshot(collection(db, 'payments'), (snapshot) => {
+    const list = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Payment[];
+    callback(list);
+  }, (err) => console.error('Error listening to payments:', err));
 }
 
 export function subscribeProjects(callback: (projects: ProjectItem[]) => void): () => void {

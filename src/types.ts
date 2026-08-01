@@ -72,6 +72,14 @@ export interface VisitItem {
 
 export type ItemType = 'package' | 'offer';
 
+export interface EmployeeCommissionItem {
+  employeeId: string;
+  employeeName: string;
+  position?: string;
+  commissionPercent: number; // e.g., 10 for 10%
+  commissionAmount: number; // e.g., (finalInvoice * commissionPercent) / 100
+}
+
 export type SaleStatus = 'mowakad' | 'morsal_qabl_dafa';
 
 export interface Sale {
@@ -100,6 +108,22 @@ export interface Sale {
   paidAmount: number; // For debt calculation (finalInvoice - paidAmount)
   status: SaleStatus; // 'mowakad' (مؤكد) or 'morsal_qabl_dafa' (مرسل قبل الدفع)
   projectUrl?: string; // Optional project link
+  nextVisitDate?: string; // Optional next visit reminder date
+  assignedEmployeeId?: string;
+  assignedEmployeeName?: string;
+  employeeCommissionRate?: number;
+  employeeCommissions?: EmployeeCommissionItem[];
+  createdAt: string;
+}
+
+export interface Payment {
+  id: string;
+  clientId: string;
+  clientName?: string;
+  saleId?: string;
+  amount: number;
+  date: string;
+  note?: string;
   createdAt: string;
 }
 
@@ -114,12 +138,14 @@ export interface Expense {
   createdAt: string;
 }
 
-export type TeamMemberPosition = 'owner' | 'engineer' | 'media_buyer' | 'custom';
+export type TeamMemberPosition = 'owner' | 'engineer' | 'media_buyer' | 'sales' | 'developer' | 'custom';
 
 export const POSITION_LABELS: Record<TeamMemberPosition, string> = {
   owner: 'صاحب المشروع ومطور (مدير عام)',
-  engineer: 'مهندس / مطور برمجيات',
+  engineer: 'مهندس برمجيات',
   media_buyer: 'ميديا مان / تسويق وإعلانات',
+  sales: 'مسؤول مبيعات (سيلز)',
+  developer: 'مطور تطبيقات ونظم',
   custom: 'وظيفة مخصصة',
 };
 
@@ -138,9 +164,12 @@ export interface TeamMember {
   email: string;
   phone: string;
   whatsappPhone?: string;
+  username?: string;
+  password?: string;
   position: TeamMemberPosition;
   customPositionTitle?: string;
-  defaultCommissionRate: number; // Percentage %
+  defaultCommissionRate: number; // Percentage % (default 10)
+  defaultCommissionPercent?: number; // Alias for defaultCommissionRate
   permissions: TeamMemberPermissions;
   allowedScreens?: ScreenView[];
   pinCode?: string;

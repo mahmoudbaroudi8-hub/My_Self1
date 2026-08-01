@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Lock, User, KeyRound, Download, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
+import { Lock, User, KeyRound, Download, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, UserCheck } from 'lucide-react';
+import { TeamMember } from '../types';
 
 interface LoginScreenProps {
-  onLoginSuccess: () => void;
+  teamMembers?: TeamMember[];
+  onLoginSuccess: (member?: TeamMember) => void;
   savedUsername: string;
   installPrompt: any;
   onInstallApp: () => void;
@@ -10,6 +12,7 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
+  teamMembers = [],
   onLoginSuccess,
   savedUsername,
   installPrompt,
@@ -25,20 +28,63 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     e.preventDefault();
     setErrorMsg('');
 
-    // Retrieve active credentials from localStorage or fallback
-    const storedUsername = localStorage.getItem('bm_username') || 'admin';
-    const storedPassword = localStorage.getItem('bm_password') || '123';
+    const uInput = username.trim().toLowerCase();
+    const pInput = password.trim();
 
-    if (username.trim() === storedUsername && password === storedPassword) {
+    // 1. Check Owner login (admin / 123 or pin 297062)
+    const storedUsername = (localStorage.getItem('bm_username') || 'admin').toLowerCase();
+    const storedPassword = localStorage.getItem('bm_password') || '123';
+    const isOwnerCreds = (uInput === storedUsername || uInput === 'admin') && (pInput === storedPassword || pInput === '297062');
+
+    if (isOwnerCreds) {
       if (rememberMe) {
         localStorage.setItem('bm_is_logged_in', 'true');
+        localStorage.removeItem('bm_active_user_id');
       } else {
         sessionStorage.setItem('bm_is_logged_in', 'true');
+        sessionStorage.removeItem('bm_active_user_id');
       }
-      onLoginSuccess();
-    } else {
-      setErrorMsg('اسم المستخدم أو كلمة المرور غير صحيحة (الافتراضي: admin / 123)');
+      const ownerMember = teamMembers.find((m) => m.position === 'owner');
+      onLoginSuccess(ownerMember);
+      return;
     }
+
+    // 2. Check Employee login in teamMembers list
+    const matchedEmployee = teamMembers.find((m) => {
+      if (m.isActive === false) return false;
+
+      const mUsername = (m.username || '').toLowerCase();
+      const mEmail = (m.email || '').toLowerCase();
+      const mPhone = (m.phone || '').replace(/[^0-9]/g, '');
+      const mName = (m.name || '').toLowerCase();
+
+      const usernameMatch =
+        uInput === mUsername ||
+        uInput === mEmail ||
+        (mPhone && uInput.replace(/[^0-9]/g, '') === mPhone) ||
+        uInput === mName;
+
+      const passwordMatch =
+        pInput === m.password ||
+        pInput === m.pinCode ||
+        (m.password === undefined && (pInput === '1234' || pInput === '123'));
+
+      return usernameMatch && passwordMatch;
+    });
+
+    if (matchedEmployee) {
+      if (rememberMe) {
+        localStorage.setItem('bm_is_logged_in', 'true');
+        localStorage.setItem('bm_active_user_id', matchedEmployee.id);
+      } else {
+        sessionStorage.setItem('bm_is_logged_in', 'true');
+        sessionStorage.setItem('bm_active_user_id', matchedEmployee.id);
+      }
+      onLoginSuccess(matchedEmployee);
+      return;
+    }
+
+    setErrorMsg('اسم المستخدم أو كلمة المرور غير صحيحة. للوصول كـ مالك (admin / 123) أو عبر بيانات الموظف المُسجلة');
   };
 
   return (
