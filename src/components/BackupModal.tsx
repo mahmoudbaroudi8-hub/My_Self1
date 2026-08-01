@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Database, Download, Upload, FileSpreadsheet, CheckCircle2, RefreshCw, X, ShieldAlert } from 'lucide-react';
-import { Client, Package, Offer, Sale, Expense, ProjectItem } from '../types';
+import { Database, Download, Upload, FileSpreadsheet, CheckCircle2, RefreshCw, X, ShieldAlert, Users, ChevronLeft } from 'lucide-react';
+import { Client, Package, Offer, Sale, Expense, ProjectItem, ScreenView } from '../types';
 import { exportFullReportToExcel } from '../lib/excelExport';
 import { addClient, addPackage, addOffer, addSale, addExpense, addProject } from '../lib/firebase';
 
@@ -13,6 +13,7 @@ interface BackupModalProps {
   expenses: Expense[];
   onClose: () => void;
   onRefreshData?: () => void;
+  onNavigate?: (screen: ScreenView) => void;
 }
 
 export const BackupModal: React.FC<BackupModalProps> = ({
@@ -24,6 +25,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   expenses,
   onClose,
   onRefreshData,
+  onNavigate,
 }) => {
   const [restoring, setRestoring] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
@@ -139,8 +141,8 @@ export const BackupModal: React.FC<BackupModalProps> = ({
               <Database className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">إدارة النسخ الاحتياطي والبيانات</h3>
-              <p className="text-[11px] text-gray-300">Firestore Cloud DB & Offline Backup</p>
+              <h3 className="text-sm font-bold text-white">إعدادات النظام والنسخ الاحتياطي</h3>
+              <p className="text-[11px] text-gray-300">إدارة النظام، الفريق، والنسخ الاحتياطي</p>
             </div>
           </div>
 
@@ -151,6 +153,31 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Team & Permissions Dedicated Row */}
+        {onNavigate && (
+          <div className="p-3.5 glass-card border border-[#FF7A1A]/40 bg-gradient-to-r from-[#FF7A1A]/10 via-[#121C30] to-[#0B1220] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl shadow-lg">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-[#FF7A1A]/20 border border-[#FF7A1A]/30 text-[#FF7A1A] flex items-center justify-center font-bold shrink-0">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white">الفريق والأدوار والصلاحيات</h4>
+                <p className="text-[10px] text-gray-300">إدارة الأعضاء، البوسيشن، الصلاحيات ورموز الـ PIN</p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                onClose();
+                onNavigate('team');
+              }}
+              className="w-full sm:w-auto px-3.5 py-2 sm:py-1.5 bg-[#FF7A1A] hover:bg-[#FF7A1A]/90 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-md shadow-[#FF7A1A]/20 shrink-0 transition-all active:scale-95"
+            >
+              <span>فتح الشاشة الكاملة</span>
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Database Live Sync Status Banner */}
         <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-1.5 text-xs">

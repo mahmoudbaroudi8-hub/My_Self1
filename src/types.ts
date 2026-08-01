@@ -173,6 +173,11 @@ export interface TeamMember {
   permissions: TeamMemberPermissions;
   allowedScreens?: ScreenView[];
   pinCode?: string;
+  pinSalt?: string;
+  passwordSalt?: string;
+  failedLoginAttempts?: number;
+  lockedUntil?: string;
+  lastFailedAttempt?: string;
   isActive: boolean;
   createdAt?: string;
 }

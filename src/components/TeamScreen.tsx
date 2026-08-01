@@ -34,7 +34,8 @@ import {
   ScreenView,
   ALL_SCREENS_CONFIG,
 } from '../types';
-import { resetTeamToOwnerOnly } from '../lib/firebase';
+import { resetTeamToOwnerOnly, recordFailedLoginAttempt, resetLoginAttempts } from '../lib/firebase';
+import { verifyTextMatch } from '../lib/authCrypto';
 
 interface TeamScreenProps {
   teamMembers: TeamMember[];
@@ -67,9 +68,24 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
   const [password, setPassword] = useState<string>('');
   const [position, setPosition] = useState<TeamMemberPosition>('engineer');
   const [customPositionTitle, setCustomPositionTitle] = useState<string>('');
-  const [defaultCommissionRate, setDefaultCommissionRate] = useState<number>(10);
+  const [defaultCommissionRate, setDefaultCommissionRate] = useState<string | number>(10);
   const [pinCode, setPinCode] = useState<string>('1234');
   const [isActive, setIsActive] = useState<boolean>(true);
+
+  const isOwnerLoggedIn = currentUser?.position === 'owner';
+
+  const handleOpenSwitchModal = (targetMember: TeamMember) => {
+    if (!isOwnerLoggedIn) {
+      setStatusMessage({
+        text: 'عفواً، خاصية (دخول كـ) مقتصرة فقط وحصرياً على صاحب المشروع والمطور الرئيسي.',
+        type: 'error',
+      });
+      return;
+    }
+    setSwitchTarget(targetMember);
+    setEnteredPin('');
+    setPinError('');
+  };
 
   // Allowed screens state
   const [allowedScreens, setAllowedScreens] = useState<ScreenView[]>([
@@ -98,23 +114,11 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
 
   // UI helpers for password sheet table
   const [showSheetTable, setShowSheetTable] = useState<boolean>(true);
-  const [visiblePins, setVisiblePins] = useState<Record<string, boolean>>({});
-  const [copiedPinId, setCopiedPinId] = useState<string | null>(null);
 
   // PIN Verification Modal State for switching user
   const [switchTarget, setSwitchTarget] = useState<TeamMember | null>(null);
   const [enteredPin, setEnteredPin] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
-
-  const togglePinVisibility = (id: string) => {
-    setVisiblePins((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const copyPinToClipboard = (id: string, pin: string) => {
-    navigator.clipboard.writeText(pin);
-    setCopiedPinId(id);
-    setTimeout(() => setCopiedPinId(null), 2000);
-  };
 
   const handleSelectMember = (member: TeamMember) => {
     setSelectedMemberId(member.id);
@@ -123,11 +127,12 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
     setPhone(member.phone || '');
     setWhatsappPhone(member.whatsappPhone || member.phone || '');
     setUsername(member.username || '');
-    setPassword(member.password || '');
+    // Keep credentials input empty so existing hashes are preserved unless user sets a new one
+    setPassword('');
     setPosition(member.position);
     setCustomPositionTitle(member.customPositionTitle || '');
     setDefaultCommissionRate(member.defaultCommissionRate ?? 10);
-    setPinCode(member.pinCode || '1234');
+    setPinCode('');
     setIsActive(member.isActive !== false);
 
     setAllowedScreens(
@@ -168,7 +173,7 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
     setPosition('engineer');
     setCustomPositionTitle('');
     setDefaultCommissionRate(10);
-    setPinCode('1234');
+    setPinCode('');
     setIsActive(true);
 
     setAllowedScreens([
@@ -233,18 +238,19 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
       setIsSubmitting(true);
       setStatusMessage(null);
 
-      const memberPayload: Omit<TeamMember, 'id'> = {
+      const parsedRate = parseFloat(String(defaultCommissionRate));
+      const validCommissionRate = isNaN(parsedRate) ? 10 : Math.max(0, Math.min(100, parsedRate));
+
+      const memberPayload: Partial<TeamMember> = {
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim(),
         whatsappPhone: whatsappPhone.trim() || phone.trim(),
         username: username.trim() || email.trim() || name.trim().toLowerCase().replace(/\s+/g, ''),
-        password: password.trim() || pinCode.trim() || '1234',
         position,
         customPositionTitle: position === 'custom' ? customPositionTitle.trim() : '',
-        defaultCommissionRate: Number(defaultCommissionRate) ?? 10,
-        defaultCommissionPercent: Number(defaultCommissionRate) ?? 10,
-        pinCode: pinCode.trim() || '1234',
+        defaultCommissionRate: validCommissionRate,
+        defaultCommissionPercent: validCommissionRate,
         isActive,
         allowedScreens,
         permissions: {
@@ -255,12 +261,22 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
           canManageTeam,
           canViewReports,
         },
-        createdAt: new Date().toISOString(),
       };
 
+      if (pinCode.trim()) {
+        memberPayload.pinCode = pinCode.trim();
+      } else if (selectedMemberId === 'new') {
+        memberPayload.pinCode = '1234';
+      }
+
+      if (password.trim()) {
+        memberPayload.password = password.trim();
+      }
+
       if (selectedMemberId === 'new') {
-        await onAddTeamMember(memberPayload);
-        setStatusMessage({ text: 'تمت إضافة عضو الفريق بنجاح إلى قاعدة البيانات!', type: 'success' });
+        memberPayload.createdAt = new Date().toISOString();
+        await onAddTeamMember(memberPayload as Omit<TeamMember, 'id'>);
+        setStatusMessage({ text: 'تمت إضافة عضو الفريق بنجاح وتشفير رمز PIN كلمة المرور!', type: 'success' });
       } else {
         await onUpdateTeamMember(selectedMemberId, memberPayload);
         setStatusMessage({ text: 'تم تحديث بيانات ومستويات صلاحية العضو بنجاح!', type: 'success' });
@@ -293,18 +309,42 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
     }
   };
 
-  const handleVerifySwitchPin = (e: React.FormEvent) => {
+  const handleVerifySwitchPin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!switchTarget) return;
 
-    const correctPin = switchTarget.pinCode || '1234';
-    if (enteredPin.trim() === correctPin) {
+    if (!isOwnerLoggedIn) {
+      setPinError('خاصية (دخول كـ) مقتصرة فقط وحصرياً على صاحب المشروع والمطور الرئيسي.');
+      return;
+    }
+
+    if (switchTarget.lockedUntil) {
+      const lockTime = new Date(switchTarget.lockedUntil).getTime();
+      const now = Date.now();
+      if (lockTime > now) {
+        const remainingMins = Math.ceil((lockTime - now) / 60000);
+        setPinError(`هذا الحساب مقفل مؤقتاً بسبب 5 محاولات خاطئة. حاول بعد ${remainingMins} دقيقة.`);
+        return;
+      }
+    }
+
+    const isMatch = await verifyTextMatch(enteredPin.trim(), switchTarget.pinCode, switchTarget.pinSalt);
+    if (isMatch) {
+      await resetLoginAttempts(switchTarget.id);
       if (onSwitchUser) onSwitchUser(switchTarget);
       setSwitchTarget(null);
       setEnteredPin('');
       setPinError('');
     } else {
-      setPinError('رمز PIN غير صحيح، حاول مرة أخرى');
+      const { newCount, isLocked } = await recordFailedLoginAttempt(
+        switchTarget.id,
+        switchTarget.failedLoginAttempts || 0
+      );
+      if (isLocked) {
+        setPinError('تم تجاوز عدد المحاولات (5 محاولات). تم قفل الحساب مؤقتاً لمدة 15 دقيقة.');
+      } else {
+        setPinError(`رمز PIN غير صحيح. المحاولة الخاطئة رقم (${newCount}) من 5.`);
+      }
     }
   };
 
@@ -388,17 +428,6 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {onOpenBackup && (
-                  <button
-                    type="button"
-                    onClick={onOpenBackup}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md"
-                    title="قاعدة البيانات والنسخ الاحتياطي (Backup & Restore)"
-                  >
-                    <Database className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>إدارة قاعدة البيانات والنسخ الاحتياطي</span>
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={handleResetToOwnerOnly}
@@ -436,141 +465,228 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
         </div>
 
         {showSheetTable && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-white/5 text-gray-300 font-bold border-b border-white/10">
-                  <th className="p-2.5">الموظف / الوظيفة</th>
-                  <th className="p-2.5">رمز الدخول (PIN)</th>
-                  <th className="p-2.5">الواتساب والتواصل</th>
-                  <th className="p-2.5">الشاشات المسموح بها</th>
-                  <th className="p-2.5 text-center">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {teamMembers.map((m) => {
-                  const showPin = visiblePins[m.id];
-                  const pinText = m.pinCode || '1234';
-                  const wa = m.whatsappPhone || m.phone || '';
-                  const waClean = wa.replace(/[^0-9]/g, '');
+          <div>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-white/5 text-gray-300 font-bold border-b border-white/10">
+                    <th className="p-2.5">الموظف / الوظيفة</th>
+                    <th className="p-2.5">رمز الدخول (PIN)</th>
+                    <th className="p-2.5">الواتساب والتواصل</th>
+                    <th className="p-2.5">الشاشات المسموح بها</th>
+                    <th className="p-2.5 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {teamMembers.map((m) => {
+                    const wa = m.whatsappPhone || m.phone || '';
+                    const waClean = wa.replace(/[^0-9]/g, '');
 
-                  return (
-                    <tr key={m.id} className="hover:bg-white/5 transition-colors">
-                      <td className="p-2.5 font-extrabold text-white">
-                        <div className="flex items-center gap-2">
-                          <span>{m.position === 'owner' ? '👑' : '👤'}</span>
-                          <div>
-                            <div>{m.name}</div>
-                            <span className="text-[10px] text-[#FF7A1A] font-bold">
-                              {m.position === 'custom'
-                                ? m.customPositionTitle || 'وظيفة مخصصة'
-                                : POSITION_LABELS[m.position]}
+                    return (
+                      <tr key={m.id} className="hover:bg-white/5 transition-colors">
+                        <td className="p-2.5 font-extrabold text-white">
+                          <div className="flex items-center gap-2">
+                            <span>{m.position === 'owner' ? '👑' : '👤'}</span>
+                            <div>
+                              <div>{m.name}</div>
+                              <span className="text-[10px] text-[#FF7A1A] font-bold">
+                                {m.position === 'custom'
+                                  ? m.customPositionTitle || 'وظيفة مخصصة'
+                                  : POSITION_LABELS[m.position]}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-2.5">
+                          <div className="flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 w-fit">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span className="font-mono font-bold text-emerald-300 text-[11px] tracking-wide">
+                              مشفر ومحمي (••••••)
                             </span>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="p-2.5">
-                        <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-lg border border-white/10 w-fit">
-                          <span className="font-mono font-bold text-[#FF7A1A] tracking-wider text-xs">
-                            {showPin ? pinText : '••••••'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => togglePinVisibility(m.id)}
-                            className="p-1 hover:text-white text-gray-400"
-                            title={showPin ? 'إخفاء PIN' : 'إظهار PIN'}
-                          >
-                            {showPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => copyPinToClipboard(m.id, pinText)}
-                            className="p-1 hover:text-emerald-400 text-gray-400"
-                            title="نسخ PIN"
-                          >
-                            {copiedPinId === m.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <td className="p-2.5">
+                          {waClean ? (
+                            <a
+                              href={`https://wa.me/${waClean.startsWith('2') ? waClean : '2' + waClean}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-300 font-bold text-[11px] transition-all dir-ltr"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              <span>{wa}</span>
+                            </a>
+                          ) : (
+                            <span className="text-[10px] text-gray-500">غير محدد</span>
+                          )}
+                        </td>
+
+                        <td className="p-2.5">
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {m.position === 'owner' ? (
+                              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
+                                كل الشاشات (مالك المشروع)
+                              </span>
+                            ) : m.allowedScreens && m.allowedScreens.length > 0 ? (
+                              ALL_SCREENS_CONFIG.filter((s) => m.allowedScreens?.includes(s.id)).map((s) => (
+                                <span
+                                  key={s.id}
+                                  className="px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/20 text-[9px] font-semibold"
+                                >
+                                  {s.label}
+                                </span>
+                              ))
                             ) : (
-                              <Copy className="w-3.5 h-3.5" />
+                              <span className="text-[10px] text-gray-500">لا يوجد شاشات مخصصة</span>
                             )}
-                          </button>
-                        </div>
-                      </td>
+                          </div>
+                        </td>
 
-                      <td className="p-2.5">
+                        <td className="p-2.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {isOwnerLoggedIn && (
+                              <button
+                                onClick={() => handleOpenSwitchModal(m)}
+                                className="p-1.5 rounded bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 text-[10px] font-bold"
+                                title="تسجيل الدخول بهذا الحساب (خاص بمطور/مالك النظام فقط)"
+                              >
+                                <Key className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleSelectMember(m)}
+                              className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-white text-[10px]"
+                              title="تعديل الصلاحيات والبيانات"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            {m.position !== 'owner' && (
+                              <button
+                                onClick={() => handleDeleteMember(m.id, m.name)}
+                                className="p-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 text-[10px]"
+                                title="حذف العضو نهائياً"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Cards View */}
+            <div className="block md:hidden space-y-3 pt-1">
+              {teamMembers.map((m) => {
+                const wa = m.whatsappPhone || m.phone || '';
+                const waClean = wa.replace(/[^0-9]/g, '');
+
+                return (
+                  <div
+                    key={m.id}
+                    className="p-3.5 glass-card border border-white/10 bg-[#121C30]/80 rounded-xl space-y-2.5 shadow-md"
+                  >
+                    <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{m.position === 'owner' ? '👑' : '👤'}</span>
+                        <div>
+                          <h4 className="text-xs font-extrabold text-white">{m.name}</h4>
+                          <span className="text-[10px] text-[#FF7A1A] font-bold block">
+                            {m.position === 'custom'
+                              ? m.customPositionTitle || 'وظيفة مخصصة'
+                              : POSITION_LABELS[m.position]}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {isOwnerLoggedIn && (
+                          <button
+                            onClick={() => handleOpenSwitchModal(m)}
+                            className="px-2 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/30 text-[10px] font-bold flex items-center gap-1"
+                            title="دخول كـ (خاص بالمالك فقط)"
+                          >
+                            <Key className="w-3 h-3" />
+                            <span>دخول كـ</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleSelectMember(m)}
+                          className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white"
+                          title="تعديل"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        {m.position !== 'owner' && (
+                          <button
+                            onClick={() => handleDeleteMember(m.id, m.name)}
+                            className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30"
+                            title="حذف"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-black/30 p-2 rounded-lg border border-white/5 space-y-1">
+                        <span className="text-[10px] text-gray-400 block">رمز PIN:</span>
+                        <div className="flex items-center gap-1 text-emerald-300 font-bold text-[10px]">
+                          <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                          <span>مشفر ومحمي</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-black/30 p-2 rounded-lg border border-white/5 space-y-1">
+                        <span className="text-[10px] text-gray-400 block">الواتساب:</span>
                         {waClean ? (
                           <a
                             href={`https://wa.me/${waClean.startsWith('2') ? waClean : '2' + waClean}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-300 font-bold text-[11px] transition-all dir-ltr"
+                            className="text-emerald-300 font-bold text-[10px] flex items-center gap-1 dir-ltr truncate"
                           >
-                            <MessageSquare className="w-3.5 h-3.5" />
-                            <span>{wa}</span>
+                            <MessageSquare className="w-3 h-3 text-emerald-400 shrink-0" />
+                            <span className="truncate">{wa}</span>
                           </a>
                         ) : (
                           <span className="text-[10px] text-gray-500">غير محدد</span>
                         )}
-                      </td>
+                      </div>
+                    </div>
 
-                      <td className="p-2.5">
-                        <div className="flex flex-wrap gap-1 max-w-xs">
-                          {m.position === 'owner' ? (
-                            <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
-                              كل الشاشات (مالك المشروع)
-                            </span>
-                          ) : m.allowedScreens && m.allowedScreens.length > 0 ? (
-                            ALL_SCREENS_CONFIG.filter((s) => m.allowedScreens?.includes(s.id)).map((s) => (
-                              <span
-                                key={s.id}
-                                className="px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/20 text-[9px] font-semibold"
-                              >
-                                {s.label}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-[10px] text-gray-500">لا يوجد شاشات مخصصة</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="p-2.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => {
-                              setSwitchTarget(m);
-                              setEnteredPin('');
-                              setPinError('');
-                            }}
-                            className="p-1.5 rounded bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 text-[10px] font-bold"
-                            title="تسجيل الدخول بهذا الحساب"
-                          >
-                            <Key className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleSelectMember(m)}
-                            className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-white text-[10px]"
-                            title="تعديل الصلاحيات والبيانات"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          {m.position !== 'owner' && (
-                            <button
-                              onClick={() => handleDeleteMember(m.id, m.name)}
-                              className="p-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 text-[10px]"
-                              title="حذف العضو نهائياً"
+                    <div className="space-y-1 pt-1">
+                      <span className="text-[10px] text-gray-400 font-bold block">الشاشات المسموحة:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {m.position === 'owner' ? (
+                          <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
+                            كل الشاشات
+                          </span>
+                        ) : m.allowedScreens && m.allowedScreens.length > 0 ? (
+                          ALL_SCREENS_CONFIG.filter((s) => m.allowedScreens?.includes(s.id)).map((s) => (
+                            <span
+                              key={s.id}
+                              className="px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/20 text-[9px] font-semibold"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                              {s.label}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-gray-500">لا يوجد</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -632,19 +748,17 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSwitchTarget(member);
-                          setEnteredPin('');
-                          setPinError('');
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/30 text-[11px] font-bold flex items-center gap-1 transition-all"
-                        title="تبديل الحساب وتسجيل الدخول باسم هذا العضو"
-                      >
-                        <Key className="w-3.5 h-3.5" />
-                        <span>دخول كـ</span>
-                      </button>
+                      {isOwnerLoggedIn && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSwitchModal(member)}
+                          className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/30 text-[11px] font-bold flex items-center gap-1 transition-all"
+                          title="تبديل الحساب وتسجيل الدخول باسم هذا العضو (خاص بالمطور/المالك)"
+                        >
+                          <Key className="w-3.5 h-3.5" />
+                          <span>دخول كـ</span>
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -819,10 +933,14 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
                 />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-amber-300 mb-1 block">كلمة المرور للدخول</label>
+                <label className="text-[11px] font-bold text-amber-300 mb-1 block">
+                  {selectedMemberId === 'new'
+                    ? 'كلمة المرور للدخول (تُشفر تلقائياً)'
+                    : 'تعيين كلمة مرور جديدة (اتركه فارغاً للحفاظ على الحالية)'}
+                </label>
                 <input
-                  type="text"
-                  placeholder="password"
+                  type="password"
+                  placeholder={selectedMemberId === 'new' ? 'كلمة المرور للدخول' : '••••••••'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="glass-input w-full p-2.5 text-xs dir-ltr font-bold text-[#FF7A1A]"
@@ -873,17 +991,31 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
                   type="number"
                   min={0}
                   max={100}
+                  step="any"
                   value={defaultCommissionRate}
-                  onChange={(e) => setDefaultCommissionRate(Number(e.target.value) || 0)}
+                  onChange={(e) => setDefaultCommissionRate(e.target.value)}
+                  onBlur={() => {
+                    const val = parseFloat(String(defaultCommissionRate));
+                    if (isNaN(val)) {
+                      setDefaultCommissionRate(10);
+                    } else {
+                      setDefaultCommissionRate(Math.max(0, Math.min(100, val)));
+                    }
+                  }}
                   className="glass-input w-full p-2.5 text-xs font-bold text-center text-[#FF7A1A]"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] text-gray-300 mb-1 block">رمز PIN لدخول الحساب</label>
+                <label className="text-[11px] text-gray-300 mb-1 block">
+                  {selectedMemberId === 'new'
+                    ? 'رمز PIN لدخول الحساب (يُشفر تلقائياً)'
+                    : 'تعيين رمز PIN جديد (اتركه فارغاً للحفاظ على الحالي)'}
+                </label>
                 <input
-                  type="text"
+                  type="password"
                   maxLength={6}
+                  placeholder={selectedMemberId === 'new' ? 'مثال: 1234' : '••••••'}
                   value={pinCode}
                   onChange={(e) => setPinCode(e.target.value)}
                   className="glass-input w-full p-2.5 text-xs font-bold text-center tracking-widest text-[#FF7A1A]"

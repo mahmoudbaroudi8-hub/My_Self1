@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Lock, User, KeyRound, Download, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, UserCheck } from 'lucide-react';
 import { TeamMember } from '../types';
+import { verifyTextMatch } from '../lib/authCrypto';
+import { recordFailedLoginAttempt, resetLoginAttempts } from '../lib/firebase';
 
 interface LoginScreenProps {
   teamMembers?: TeamMember[];
@@ -24,17 +26,88 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
     const uInput = username.trim().toLowerCase();
     const pInput = password.trim();
 
-    // 1. Check Owner login (admin / 123 or pin 297062)
+    // Find matching employee member in teamMembers list first for full rate-limiting and salt check
+    const matchedMember = teamMembers.find((m) => {
+      if (m.isActive === false) return false;
+      const mUsername = (m.username || '').toLowerCase();
+      const mEmail = (m.email || '').toLowerCase();
+      const mPhone = (m.phone || '').replace(/[^0-9]/g, '');
+      const mName = (m.name || '').toLowerCase();
+
+      return (
+        uInput === mUsername ||
+        uInput === mEmail ||
+        (mPhone && uInput.replace(/[^0-9]/g, '') === mPhone) ||
+        uInput === mName ||
+        (m.position === 'owner' && (uInput === 'admin' || uInput === 'البارودي'))
+      );
+    });
+
+    // If matched member is found, check if account is currently locked out
+    if (matchedMember) {
+      if (matchedMember.lockedUntil) {
+        const lockTime = new Date(matchedMember.lockedUntil).getTime();
+        const now = Date.now();
+        if (lockTime > now) {
+          const remainingMins = Math.ceil((lockTime - now) / 60000);
+          setErrorMsg(
+            `تم تجاوز عدد المحاولات المسموح بها (5 محاولات خاطئة متتالية). الحساب مقفل مؤقتاً، حاول بعد ${remainingMins} دقيقة.`
+          );
+          return;
+        }
+      }
+
+      // Verify credentials using salt if available
+      const passwordOk = await verifyTextMatch(pInput, matchedMember.password, matchedMember.passwordSalt);
+      const pinOk = await verifyTextMatch(pInput, matchedMember.pinCode, matchedMember.pinSalt);
+      const defaultFallbackOk =
+        !matchedMember.password && !matchedMember.pinCode && (pInput === '1234' || pInput === '123' || pInput === '297062');
+
+      if (passwordOk || pinOk || defaultFallbackOk) {
+        // Successful login: reset failed attempt counters
+        await resetLoginAttempts(matchedMember.id);
+
+        if (rememberMe) {
+          localStorage.setItem('bm_is_logged_in', 'true');
+          localStorage.setItem('bm_active_user_id', matchedMember.id);
+        } else {
+          sessionStorage.setItem('bm_is_logged_in', 'true');
+          sessionStorage.setItem('bm_active_user_id', matchedMember.id);
+        }
+        onLoginSuccess(matchedMember);
+        return;
+      } else {
+        // Failed credential match: record failed login attempt
+        const { newCount, isLocked } = await recordFailedLoginAttempt(
+          matchedMember.id,
+          matchedMember.failedLoginAttempts || 0
+        );
+
+        if (isLocked) {
+          setErrorMsg(
+            'تم تجاوز عدد المحاولات المسموح بها (5 محاولات خاطئة متتالية). تم قفل الحساب مؤقتاً لمدة 15 دقيقة.'
+          );
+        } else {
+          setErrorMsg(
+            `كلمة المرور أو رمز PIN غير صحيح. المحاولة الخاطئة رقم (${newCount}) من 5 محاولات قبل القفل.`
+          );
+        }
+        return;
+      }
+    }
+
+    // Direct Owner fallback check (if owner document not seeded or customized username)
     const storedUsername = (localStorage.getItem('bm_username') || 'admin').toLowerCase();
     const storedPassword = localStorage.getItem('bm_password') || '123';
-    const isOwnerCreds = (uInput === storedUsername || uInput === 'admin') && (pInput === storedPassword || pInput === '297062');
+    const isOwnerCreds =
+      (uInput === storedUsername || uInput === 'admin') && (pInput === storedPassword || pInput === '297062');
 
     if (isOwnerCreds) {
       if (rememberMe) {
@@ -49,42 +122,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       return;
     }
 
-    // 2. Check Employee login in teamMembers list
-    const matchedEmployee = teamMembers.find((m) => {
-      if (m.isActive === false) return false;
-
-      const mUsername = (m.username || '').toLowerCase();
-      const mEmail = (m.email || '').toLowerCase();
-      const mPhone = (m.phone || '').replace(/[^0-9]/g, '');
-      const mName = (m.name || '').toLowerCase();
-
-      const usernameMatch =
-        uInput === mUsername ||
-        uInput === mEmail ||
-        (mPhone && uInput.replace(/[^0-9]/g, '') === mPhone) ||
-        uInput === mName;
-
-      const passwordMatch =
-        pInput === m.password ||
-        pInput === m.pinCode ||
-        (m.password === undefined && (pInput === '1234' || pInput === '123'));
-
-      return usernameMatch && passwordMatch;
-    });
-
-    if (matchedEmployee) {
-      if (rememberMe) {
-        localStorage.setItem('bm_is_logged_in', 'true');
-        localStorage.setItem('bm_active_user_id', matchedEmployee.id);
-      } else {
-        sessionStorage.setItem('bm_is_logged_in', 'true');
-        sessionStorage.setItem('bm_active_user_id', matchedEmployee.id);
-      }
-      onLoginSuccess(matchedEmployee);
-      return;
-    }
-
-    setErrorMsg('اسم المستخدم أو كلمة المرور غير صحيحة. للوصول كـ مالك (admin / 123) أو عبر بيانات الموظف المُسجلة');
+    setErrorMsg('اسم المستخدم أو كلمة المرور غير صحيحة. يرجى التأكد من البيانات والمحاولة مجدداً.');
   };
 
   return (

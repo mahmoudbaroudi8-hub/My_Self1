@@ -11,8 +11,6 @@ interface NavbarProps {
   onOpenBackup?: () => void;
   onOpenInstallPwa?: () => void;
   isAppInstalled?: boolean;
-  isDesktopWide?: boolean;
-  onToggleDesktopWide?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,8 +22,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenBackup,
   onOpenInstallPwa,
   isAppInstalled = false,
-  isDesktopWide = true,
-  onToggleDesktopWide
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -99,31 +95,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Left side actions */}
         <div className="flex items-center gap-1.5">
-          {/* PC Widescreen Toggle (hidden on small mobile screens) */}
-          {onToggleDesktopWide && (
-            <button
-              onClick={onToggleDesktopWide}
-              className={`hidden md:flex w-8 h-8 rounded-full glass-button items-center justify-center transition-all ${
-                isDesktopWide ? 'text-sky-400 bg-sky-500/10 border-sky-500/30' : 'text-gray-400'
-              }`}
-              title={isDesktopWide ? 'التبديل إلى العرض المحذى (شاشة الموبايل)' : 'التبديل إلى العرض الكامل (شاشة الكمبيوتر)'}
-            >
-              {isDesktopWide ? <Smartphone className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
-            </button>
-          )}
-
-          {/* PWA Mobile Install Button */}
-          {!isAppInstalled && onOpenInstallPwa && (
-            <button
-              onClick={onOpenInstallPwa}
-              className="w-8 h-8 rounded-full glass-button flex items-center justify-center text-amber-400 hover:text-amber-300 active:scale-95 transition-transform relative"
-              title="تثبيت التطبيق على الموبايل (PWA)"
-            >
-              <Smartphone className="w-4 h-4" />
-              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#FF7A1A]" />
-            </button>
-          )}
-
           {/* Packages & Offers Catalog Button */}
           <button
             onClick={() => onNavigate('packages')}
@@ -149,13 +120,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </button>
 
-          {/* General Settings & Team Button */}
+          {/* General Settings Button */}
           <button
-            onClick={() => onNavigate('team')}
-            className={`w-8 h-8 rounded-full glass-button flex items-center justify-center transition-transform active:scale-95 ${
-              currentScreen === 'team' ? 'text-[#FF7A1A] bg-[#FF7A1A]/20 border border-[#FF7A1A]' : 'text-gray-300 hover:text-white'
-            }`}
-            title="الإعدادات العامة وفريق العمل والصلاحيات"
+            onClick={() => {
+              if (onOpenBackup) onOpenBackup();
+              else onNavigate('team');
+            }}
+            className="w-8 h-8 rounded-full glass-button flex items-center justify-center text-gray-300 hover:text-white transition-transform active:scale-95"
+            title="إعدادات النظام وفريق العمل والصلاحيات"
           >
             <Settings className="w-4 h-4" />
           </button>

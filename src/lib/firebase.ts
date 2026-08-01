@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import firebaseConfigData from '../../firebase-applet-config.json';
 import { Client, Package, Offer, Sale, Expense, Payment, ProjectItem, TeamMember, SystemType, CategoryType } from '../types';
+import { hashText } from './authCrypto';
 
 const firebaseConfig = {
   apiKey: firebaseConfigData.apiKey,
@@ -355,6 +356,7 @@ export async function seedInitialDataIfEmpty() {
     // Seed default team members if empty
     const teamSnap = await getDocs(collection(db, 'team_members'));
     if (teamSnap.empty) {
+      const { hash: hashedOwnerPin, salt: ownerPinSalt } = await hashText('297062');
       const defaultTeam: Omit<TeamMember, 'id'>[] = [
         {
           name: 'البارودي (صاحب المشروع)',
@@ -363,7 +365,10 @@ export async function seedInitialDataIfEmpty() {
           whatsappPhone: '01000000001',
           position: 'owner',
           defaultCommissionRate: 100,
-          pinCode: '297062',
+          pinCode: hashedOwnerPin,
+          pinSalt: ownerPinSalt,
+          failedLoginAttempts: 0,
+          lockedUntil: '',
           isActive: true,
           allowedScreens: ['home', 'pos', 'sales', 'clients', 'packages', 'sector', 'expenses', 'reports', 'team', 'add-client'],
           permissions: {
@@ -621,12 +626,80 @@ export async function getTeamMembers(): Promise<TeamMember[]> {
 }
 
 export async function addTeamMember(member: Omit<TeamMember, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, 'team_members'), member);
+  const payload = { ...member };
+  const rawPin = payload.pinCode ? payload.pinCode : '1234';
+  const { hash: pinHash, salt: pSalt } = await hashText(rawPin);
+  payload.pinCode = pinHash;
+  payload.pinSalt = pSalt;
+
+  if (payload.password) {
+    const { hash: passHash, salt: passSalt } = await hashText(payload.password);
+    payload.password = passHash;
+    payload.passwordSalt = passSalt;
+  }
+
+  payload.failedLoginAttempts = 0;
+  payload.lockedUntil = '';
+
+  const docRef = await addDoc(collection(db, 'team_members'), sanitizeForFirestore(payload));
   return docRef.id;
 }
 
 export async function updateTeamMember(id: string, member: Partial<TeamMember>): Promise<void> {
-  await updateDoc(doc(db, 'team_members', id), member);
+  const payload = { ...member };
+  if (payload.pinCode) {
+    const { hash: pinHash, salt: pSalt } = await hashText(payload.pinCode);
+    payload.pinCode = pinHash;
+    payload.pinSalt = pSalt;
+  }
+  if (payload.password) {
+    const { hash: passHash, salt: passSalt } = await hashText(payload.password);
+    payload.password = passHash;
+    payload.passwordSalt = passSalt;
+  }
+  await updateDoc(doc(db, 'team_members', id), sanitizeForFirestore(payload));
+}
+
+export async function recordFailedLoginAttempt(
+  memberId: string,
+  currentAttempts: number = 0
+): Promise<{ newCount: number; isLocked: boolean; lockedUntil?: string }> {
+  const newCount = currentAttempts + 1;
+  const updates: Record<string, any> = {
+    failedLoginAttempts: newCount,
+    lastFailedAttempt: new Date().toISOString(),
+  };
+
+  let isLocked = false;
+  let lockedUntil: string | undefined = undefined;
+
+  if (newCount >= 5) {
+    // Lock account for 15 minutes (900000 ms)
+    const lockDurationMs = 15 * 60 * 1000;
+    lockedUntil = new Date(Date.now() + lockDurationMs).toISOString();
+    updates.lockedUntil = lockedUntil;
+    isLocked = true;
+  }
+
+  try {
+    await updateDoc(doc(db, 'team_members', memberId), updates);
+  } catch (err) {
+    console.error('Error updating failed login attempts:', err);
+  }
+
+  return { newCount, isLocked, lockedUntil };
+}
+
+export async function resetLoginAttempts(memberId: string): Promise<void> {
+  try {
+    await updateDoc(doc(db, 'team_members', memberId), {
+      failedLoginAttempts: 0,
+      lockedUntil: '',
+      lastFailedAttempt: '',
+    });
+  } catch (err) {
+    console.error('Error resetting login attempts:', err);
+  }
 }
 
 export async function deleteTeamMember(id: string): Promise<void> {
@@ -634,13 +707,48 @@ export async function deleteTeamMember(id: string): Promise<void> {
 }
 
 export function subscribeTeamMembers(callback: (members: TeamMember[]) => void): () => void {
-  return onSnapshot(collection(db, 'team_members'), (snapshot) => {
-    const list = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as TeamMember[];
-    callback(list);
-  }, (err) => console.error('Error listening to team_members:', err));
+  return onSnapshot(
+    collection(db, 'team_members'),
+    (snapshot) => {
+      const list = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+
+        // Auto-migrate legacy plaintext or un-salted pinCode / password to salted SHA-256 hashes in Firestore
+        const pin = data.pinCode;
+        const pinSalt = data.pinSalt;
+        const pass = data.password;
+        const passSalt = data.passwordSalt;
+
+        if ((pin && (!pinSalt || pin.length < 64)) || (pass && (!passSalt || pass.length < 64))) {
+          (async () => {
+            const updates: Record<string, string> = {};
+            if (pin && (!pinSalt || pin.length < 64)) {
+              const { hash: pHash, salt: pSalt } = await hashText(pin);
+              updates.pinCode = pHash;
+              updates.pinSalt = pSalt;
+            }
+            if (pass && (!passSalt || pass.length < 64)) {
+              const { hash: pHash, salt: pSalt } = await hashText(pass);
+              updates.password = pHash;
+              updates.passwordSalt = pSalt;
+            }
+            try {
+              await updateDoc(doc(db, 'team_members', docSnap.id), updates);
+            } catch (err) {
+              console.error('Error auto-migrating member hash:', err);
+            }
+          })();
+        }
+
+        return {
+          id: docSnap.id,
+          ...data,
+        } as TeamMember;
+      });
+      callback(list);
+    },
+    (err) => console.error('Error listening to team_members:', err)
+  );
 }
 
 export async function resetTeamToOwnerOnly(): Promise<void> {
@@ -649,6 +757,7 @@ export async function resetTeamToOwnerOnly(): Promise<void> {
     await deleteDoc(doc(db, 'team_members', memberDoc.id));
   }
 
+  const { hash: hashedOwnerPin, salt: ownerPinSalt } = await hashText('297062');
   const ownerPayload: Omit<TeamMember, 'id'> = {
     name: 'البارودي (صاحب المشروع)',
     email: 'baroudi@example.com',
@@ -656,7 +765,10 @@ export async function resetTeamToOwnerOnly(): Promise<void> {
     whatsappPhone: '01000000001',
     position: 'owner',
     defaultCommissionRate: 100,
-    pinCode: '297062',
+    pinCode: hashedOwnerPin,
+    pinSalt: ownerPinSalt,
+    failedLoginAttempts: 0,
+    lockedUntil: '',
     isActive: true,
     allowedScreens: ['home', 'pos', 'sales', 'clients', 'packages', 'sector', 'expenses', 'reports', 'team', 'add-client'],
     permissions: {
