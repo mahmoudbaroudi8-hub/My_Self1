@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { X, Printer, Send, Globe, Copy, ExternalLink, ShieldCheck, CheckCircle, FileText, Smartphone } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Printer, Send, ShieldCheck, CheckCircle, FileText, Download, Loader2 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { Sale } from '../types';
 
 interface CorporateInvoiceModalProps {
@@ -8,7 +10,8 @@ interface CorporateInvoiceModalProps {
 }
 
 export const CorporateInvoiceModal: React.FC<CorporateInvoiceModalProps> = ({ sale, onClose }) => {
-  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const invoiceRef = useRef<HTMLDivElement>(null);
 
   const debt = (sale.finalInvoice || 0) - (sale.paidAmount || 0);
   const invoiceNumber = `INV-2026-${sale.id ? sale.id.slice(0, 6).toUpperCase() : '101'}`;
@@ -24,7 +27,7 @@ export const CorporateInvoiceModal: React.FC<CorporateInvoiceModalProps> = ({ sa
 
   // Generate WhatsApp Message
   const generateWhatsAppMessage = () => {
-    const text = `*مؤسسة بيزنس مانجر للحلول والأنظمة البرمجية* 🏢
+    const text = `*مؤسسة Baroudi System للحلول والأنظمة البرمجية* 🏢
 *فاتورة مبيعات معتمدة رقم:* ${invoiceNumber}
 -----------------------------------
 👤 *العميل:* ${sale.clientName}
@@ -41,13 +44,62 @@ ${debt > 0 ? `⚠️ *المتبقي (دين مستحق):* ${debt.toLocaleString
 ${sale.projectUrl ? `🌐 *رابط معاينة النظام الخاص بكم:* ${sale.projectUrl}` : ''}
 -----------------------------------
 ختم الاعتماد الرسمي: معتمد ومسدد 🎖️
-نشكركم لتعاملكم مع مؤسسة بيزنس مانجر!
+نشكركم لتعاملكم مع مؤسسة Baroudi System!
 للتواصل والدعم الفني: 01012345678`;
 
     return encodeURIComponent(text);
   };
 
   const whatsappUrl = `https://wa.me/${getCleanPhone(sale.phone)}?text=${generateWhatsAppMessage()}`;
+
+  // Download REAL PDF File using html2canvas & jsPDF
+  const handleDownloadPDF = async () => {
+    if (!invoiceRef.current) return;
+    setIsGeneratingPdf(true);
+
+    try {
+      const element = invoiceRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2, // High DPI clean crisp image
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 297; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const fileName = `Baroudi_System_Invoice_${sale.shopName.replace(/\s+/g, '_')}_${invoiceNumber}.pdf`;
+      pdf.save(fileName);
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      alert('حدث خطأ أثناء استخراج ملف الـ PDF، سيتم فتح نافذة الطباعة المباشرة بدلاً من ذلك.');
+      window.print();
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
@@ -60,7 +112,7 @@ ${sale.projectUrl ? `🌐 *رابط معاينة النظام الخاص بكم:
               <FileText className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-white">فاتورة مبيعات شركات معتمدة</h3>
+              <h3 className="text-xs font-bold text-white">فاتورة Baroudi System معتمدة</h3>
               <p className="text-[10px] text-gray-400">رقم الفاتورة: {invoiceNumber}</p>
             </div>
           </div>
@@ -78,13 +130,34 @@ ${sale.projectUrl ? `🌐 *رابط معاينة النظام الخاص بكم:
               <span>إرسال للواتساب</span>
             </a>
 
-            {/* Print button */}
+            {/* Real PDF Download Button */}
+            <button
+              onClick={handleDownloadPDF}
+              disabled={isGeneratingPdf}
+              className="px-3 py-1.5 bg-[#FF7A1A] hover:bg-[#FF7A1A]/90 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95 disabled:opacity-50"
+              title="تحميل الفاتورة كملف PDF حقيقي"
+            >
+              {isGeneratingPdf ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>جاري الاستخراج...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>تحميل PDF</span>
+                </>
+              )}
+            </button>
+
+            {/* Browser Print Button */}
             <button
               onClick={() => window.print()}
-              className="px-3 py-1.5 bg-[#FF7A1A] hover:bg-[#FF7A1A]/90 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+              className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-gray-200 rounded-xl text-xs font-bold flex items-center gap-1 transition-all active:scale-95"
+              title="طباعة عبر المتصفح"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>طباعة PDF</span>
+              <span>طباعة</span>
             </button>
 
             {/* Close */}
@@ -98,18 +171,21 @@ ${sale.projectUrl ? `🌐 *رابط معاينة النظام الخاص بكم:
         </div>
 
         {/* PRINTABLE INVOICE BODY */}
-        <div id="printable-invoice" className="p-5 sm:p-8 bg-white text-gray-900 overflow-y-auto space-y-6 font-['Cairo',sans-serif]">
-          
+        <div
+          ref={invoiceRef}
+          id="printable-invoice"
+          className="p-5 sm:p-8 bg-white text-gray-900 overflow-y-auto space-y-6 font-['Cairo',sans-serif]"
+        >
           {/* Corporate Header */}
           <div className="border-b-2 border-slate-900 pb-5 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-right space-y-1">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-[#0B1220] text-[#FF7A1A] flex items-center justify-center font-black text-lg">
-                  BM
+                  BS
                 </div>
                 <div>
-                  <h1 className="text-base font-extrabold text-slate-900 tracking-tight">مؤسسة بيزنس مانجر للأنظمة الإلكترونية</h1>
-                  <p className="text-[10px] text-slate-600 font-semibold">Business Manager Software Solutions & POS Systems</p>
+                  <h1 className="text-base font-extrabold text-slate-900 tracking-tight">مؤسسة Baroudi System للأنظمة الإلكترونية</h1>
+                  <p className="text-[10px] text-slate-600 font-semibold">Baroudi System Software Solutions & POS Systems</p>
                 </div>
               </div>
               <p className="text-[10px] text-slate-500">
@@ -206,7 +282,7 @@ ${sale.projectUrl ? `🌐 *رابط معاينة النظام الخاص بكم:
                 {/* SVG Vector Circular Stamp */}
                 <div className="w-24 h-24 rounded-full border-4 border-blue-800 flex flex-col items-center justify-center text-center p-1 relative shadow-inner rotate-[-6deg] bg-blue-900/5">
                   <div className="w-full h-full rounded-full border border-blue-800 border-dashed flex flex-col items-center justify-center">
-                    <span className="text-[7px] font-black uppercase text-blue-900 tracking-tighter">BUSINESS MANAGER</span>
+                    <span className="text-[7px] font-black uppercase text-blue-900 tracking-tighter">BAROUDI SYSTEM</span>
                     <span className="text-[10px] font-extrabold text-red-700 my-0.5">مؤسسة معتمدة</span>
                     <div className="flex items-center gap-0.5 text-blue-900">
                       <ShieldCheck className="w-3 h-3 text-emerald-600" />
@@ -218,7 +294,7 @@ ${sale.projectUrl ? `🌐 *رابط معاينة النظام الخاص بكم:
 
                 <div className="space-y-1 text-right">
                   <span className="text-xs font-black text-blue-900 block">الختم والتوقيع المعتمد</span>
-                  <p className="text-[10px] text-slate-600">تم اعتماد هذه الفاتورة إلكترونياً من قسم الحسابات بمؤسسة بيزنس مانجر.</p>
+                  <p className="text-[10px] text-slate-600">تم اعتماد هذه الفاتورة إلكترونياً من قسم الحسابات بمؤسسة Baroudi System.</p>
                   <p className="text-[9px] font-mono text-slate-500">التوقيع: ____________________</p>
                 </div>
               </div>
@@ -261,7 +337,7 @@ ${sale.projectUrl ? `🌐 *رابط معاينة النظام الخاص بكم:
 
           {/* Footer Notes */}
           <div className="text-[10px] text-slate-500 text-center pt-2 border-t border-slate-200">
-            شروط الضمان: الضمان يشمل العيوب البرمجية والدعم الفني المجاني حسب نوع الباقة المعتمدة.
+            شروط الضمان: الضمان يشمل العيوب البرمجية والدعم الفني المجاني حسب نوع الباقة المعتمدة لدى مؤسسة Baroudi System.
           </div>
 
         </div>
@@ -270,3 +346,4 @@ ${sale.projectUrl ? `🌐 *رابط معاينة النظام الخاص بكم:
     </div>
   );
 };
+

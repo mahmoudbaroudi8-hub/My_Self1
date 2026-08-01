@@ -22,6 +22,10 @@ import {
   getExpenses,
   addExpense,
   deleteExpense,
+  getTeamMembers,
+  addTeamMember,
+  updateTeamMember,
+  deleteTeamMember,
   seedInitialDataIfEmpty,
   subscribeClients,
   subscribePackages,
@@ -29,8 +33,10 @@ import {
   subscribeSales,
   subscribeExpenses,
   subscribeProjects,
+  subscribeTeamMembers,
 } from './lib/firebase';
-import { Client, Package, Offer, ProjectItem, Sale, Expense, SystemType, ScreenView } from './types';
+import { Client, Package, Offer, ProjectItem, Sale, Expense, TeamMember, SystemType, ScreenView, ALL_SCREENS_CONFIG } from './types';
+import { Lock } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
 import { QuickSaleButton } from './components/QuickSaleButton';
@@ -43,9 +49,11 @@ import { SectorScreen } from './components/SectorScreen';
 import { SalesScreen } from './components/SalesScreen';
 import { ExpensesScreen } from './components/ExpensesScreen';
 import { ReportsScreen } from './components/ReportsScreen';
+import { TeamScreen } from './components/TeamScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { BackupModal } from './components/BackupModal';
 import { InstallPwaModal } from './components/InstallPwaModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   // Authentication State
@@ -106,6 +114,9 @@ export default function App() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [currentUser, setCurrentUser] = useState<TeamMember | null>(null);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [showBackupModal, setShowBackupModal] = useState<boolean>(false);
   const [showPwaModal, setShowPwaModal] = useState<boolean>(false);
@@ -132,6 +143,7 @@ export default function App() {
     let unsubSales: (() => void) | undefined;
     let unsubExpenses: (() => void) | undefined;
     let unsubProjects: (() => void) | undefined;
+    let unsubTeam: (() => void) | undefined;
 
     const setupSubscriptions = async () => {
       try {
@@ -144,6 +156,18 @@ export default function App() {
         unsubSales = subscribeSales((sList) => setSales(sList));
         unsubExpenses = subscribeExpenses((eList) => setExpenses(eList));
         unsubProjects = subscribeProjects((prList) => setProjects(prList));
+        unsubTeam = subscribeTeamMembers((tList) => {
+          setTeamMembers(tList);
+          // Default active user to Owner or first team member if none set
+          setCurrentUser((prev) => {
+            if (prev) {
+              const updated = tList.find((m) => m.id === prev.id);
+              return updated || prev;
+            }
+            const owner = tList.find((m) => m.position === 'owner') || tList[0] || null;
+            return owner;
+          });
+        });
       } catch (err) {
         console.error('Error initializing real-time subscriptions:', err);
       } finally {
@@ -160,6 +184,7 @@ export default function App() {
       if (unsubSales) unsubSales();
       if (unsubExpenses) unsubExpenses();
       if (unsubProjects) unsubProjects();
+      if (unsubTeam) unsubTeam();
     };
   }, [isLoggedIn]);
 
@@ -250,8 +275,15 @@ export default function App() {
     );
   }
 
+  const isScreenAllowed = (screen: ScreenView): boolean => {
+    if (!currentUser) return true;
+    if (currentUser.position === 'owner') return true;
+    if (!currentUser.allowedScreens || currentUser.allowedScreens.length === 0) return true;
+    return currentUser.allowedScreens.includes(screen);
+  };
+
   return (
-    <div className="min-h-screen bg-[#0B1220] text-gray-100 font-['Cairo',sans-serif] selection:bg-[#FF7A1A]/30 flex flex-col justify-between relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#0B1220] text-gray-100 font-['Cairo',sans-serif] selection:bg-[#FF7A1A]/30 flex flex-col justify-between relative overflow-x-clip">
       {/* Decorative Frosted Ambient Background Elements */}
       <div className="fixed top-[-10%] right-[-10%] w-[50%] h-[50%] max-w-[500px] max-h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none z-0" />
       <div className="fixed bottom-[-10%] left-[-10%] w-[40%] h-[40%] max-w-[400px] max-h-[400px] bg-[#FF7A1A]/10 rounded-full blur-[100px] pointer-events-none z-0" />
@@ -264,6 +296,7 @@ export default function App() {
           onNavigate={handleNavigate}
           sales={sales}
           clients={clients}
+          currentUser={currentUser}
           onOpenBackup={() => setShowBackupModal(true)}
           onOpenInstallPwa={() => setShowPwaModal(true)}
           isDesktopWide={isDesktopWide}
@@ -278,96 +311,135 @@ export default function App() {
               <p className="text-xs text-gray-300 font-bold">جاري تحميل البيانات والتحديث التلقائي من Firestore...</p>
             </div>
           ) : (
-            <>
-              {currentScreen === 'home' && (
-                <HomeScreen
-                  sales={sales}
-                  expenses={expenses}
-                  onNavigate={handleNavigate}
-                  onOpenInstallPwa={() => setShowPwaModal(true)}
-                />
-              )}
+            <ErrorBoundary onReset={() => handleNavigate('home')}>
+              {!isScreenAllowed(currentScreen) ? (
+                <div className="glass-card p-6 text-center space-y-4 max-w-md mx-auto my-12 border-2 border-red-500/40 bg-[#0B1220]/90 shadow-2xl animate-fade-in">
+                  <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 mx-auto flex items-center justify-center">
+                    <Lock className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-sm font-extrabold text-white">
+                    شاشة محظورة ({ALL_SCREENS_CONFIG.find((s) => s.id === currentScreen)?.label || currentScreen})
+                  </h2>
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    الحساب الحالي (<span className="text-[#FF7A1A] font-bold">{currentUser?.name}</span>) لا يمتلك صلاحية لعرض هذه الشاشة. يرجى التواصل مع صاحب المشروع (البارودي) لتفعيل الصلاحية لك من شاشة إدارة الفريق.
+                  </p>
+                  <button
+                    onClick={() => handleNavigate('home')}
+                    className="btn-orange px-6 py-2.5 rounded-xl text-xs font-bold shadow-lg"
+                  >
+                    الرجوع للشاشة الرئيسية
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {currentScreen === 'home' && (
+                    <HomeScreen
+                      sales={sales}
+                      expenses={expenses}
+                      onNavigate={handleNavigate}
+                      onOpenInstallPwa={() => setShowPwaModal(true)}
+                    />
+                  )}
 
-              {currentScreen === 'pos' && (
-                <PosScreen
-                  clients={clients}
-                  packages={packages}
-                  offers={offers}
-                  onSaveSale={handleSaveSale}
-                  onNavigate={handleNavigate}
-                />
-              )}
+                  {currentScreen === 'pos' && (
+                    <PosScreen
+                      clients={clients}
+                      packages={packages}
+                      offers={offers}
+                      onSaveSale={handleSaveSale}
+                      onNavigate={handleNavigate}
+                    />
+                  )}
 
-              {currentScreen === 'add-client' && (
-                <AddClientScreen onAddClient={handleAddClient} onNavigate={handleNavigate} />
-              )}
+                  {currentScreen === 'add-client' && (
+                    <AddClientScreen onAddClient={handleAddClient} onNavigate={handleNavigate} />
+                  )}
 
-              {currentScreen === 'clients' && (
-                <ClientsScreen
-                  clients={clients}
-                  sales={sales}
-                  onDeleteClient={handleDeleteClient}
-                  onNavigate={handleNavigate}
-                />
-              )}
+                  {currentScreen === 'clients' && (
+                    <ClientsScreen
+                      clients={clients}
+                      sales={sales}
+                      onDeleteClient={handleDeleteClient}
+                      onNavigate={handleNavigate}
+                    />
+                  )}
 
-              {currentScreen === 'packages' && (
-                <PackagesScreen
-                  packages={packages}
-                  offers={offers}
-                  projects={projects}
-                  onAddPackage={handleAddPackage}
-                  onUpdatePackage={handleUpdatePackage}
-                  onDeletePackage={handleDeletePackage}
-                  onAddOffer={handleAddOffer}
-                  onUpdateOffer={handleUpdateOffer}
-                  onDeleteOffer={handleDeleteOffer}
-                  onAddProject={handleAddProject}
-                  onUpdateProject={handleUpdateProject}
-                  onDeleteProject={handleDeleteProject}
-                  onLogout={handleLogout}
-                  installPrompt={installPrompt}
-                  onInstallApp={handleInstallApp}
-                  isAppInstalled={isAppInstalled}
-                />
-              )}
+                  {currentScreen === 'packages' && (
+                    <PackagesScreen
+                      packages={packages}
+                      offers={offers}
+                      projects={projects}
+                      teamMembers={teamMembers}
+                      onAddPackage={handleAddPackage}
+                      onUpdatePackage={handleUpdatePackage}
+                      onDeletePackage={handleDeletePackage}
+                      onAddOffer={handleAddOffer}
+                      onUpdateOffer={handleUpdateOffer}
+                      onDeleteOffer={handleDeleteOffer}
+                      onAddProject={handleAddProject}
+                      onUpdateProject={handleUpdateProject}
+                      onDeleteProject={handleDeleteProject}
+                      onLogout={handleLogout}
+                      installPrompt={installPrompt}
+                      onInstallApp={handleInstallApp}
+                      isAppInstalled={isAppInstalled}
+                    />
+                  )}
 
-              {currentScreen === 'sector' && (
-                <SectorScreen
-                  sectorName={selectedSector}
-                  sales={sales}
-                  expenses={expenses}
-                  clients={clients}
-                  onNavigate={handleNavigate}
-                />
-              )}
+                  {currentScreen === 'team' && (
+                    <TeamScreen
+                      teamMembers={teamMembers}
+                      projects={projects}
+                      currentUser={currentUser}
+                      onSwitchUser={(user) => setCurrentUser(user)}
+                      onAddTeamMember={(m) => addTeamMember(m)}
+                      onUpdateTeamMember={async (id, m) => {
+                        await updateTeamMember(id, m);
+                      }}
+                      onDeleteTeamMember={async (id) => {
+                        await deleteTeamMember(id);
+                      }}
+                    />
+                  )}
 
-              {currentScreen === 'sales' && (
-                <SalesScreen
-                  sales={sales}
-                  onUpdateSaleStatus={handleUpdateSaleStatus}
-                  onDeleteSale={handleDeleteSale}
-                  onNavigate={handleNavigate}
-                />
-              )}
+                  {currentScreen === 'sector' && (
+                    <SectorScreen
+                      sectorName={selectedSector}
+                      sales={sales}
+                      expenses={expenses}
+                      clients={clients}
+                      onNavigate={handleNavigate}
+                    />
+                  )}
 
-              {currentScreen === 'expenses' && (
-                <ExpensesScreen
-                  expenses={expenses}
-                  onAddExpense={handleAddExpense}
-                  onDeleteExpense={handleDeleteExpense}
-                />
-              )}
+                  {currentScreen === 'sales' && (
+                    <SalesScreen
+                      sales={sales}
+                      onUpdateSaleStatus={handleUpdateSaleStatus}
+                      onDeleteSale={handleDeleteSale}
+                      onNavigate={handleNavigate}
+                    />
+                  )}
 
-              {currentScreen === 'reports' && (
-                <ReportsScreen
-                  sales={sales}
-                  expenses={expenses}
-                  clients={clients}
-                  packages={packages}
-                />
+                  {currentScreen === 'expenses' && (
+                    <ExpensesScreen
+                      expenses={expenses}
+                      onAddExpense={handleAddExpense}
+                      onDeleteExpense={handleDeleteExpense}
+                    />
+                  )}
+
+                  {currentScreen === 'reports' && (
+                    <ReportsScreen
+                      sales={sales}
+                      expenses={expenses}
+                      clients={clients}
+                      packages={packages}
+                    />
+                  )}
+                </>
               )}
-            </>
+            </ErrorBoundary>
           )}
         </main>
 

@@ -15,7 +15,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import firebaseConfigData from '../../firebase-applet-config.json';
-import { Client, Package, Offer, Sale, Expense, ProjectItem, SystemType, CategoryType } from '../types';
+import { Client, Package, Offer, Sale, Expense, ProjectItem, TeamMember, SystemType, CategoryType } from '../types';
 
 const firebaseConfig = {
   apiKey: firebaseConfigData.apiKey,
@@ -317,11 +317,69 @@ export async function seedInitialDataIfEmpty() {
           description: 'إدارة تواريخ الصلاحية، أسعار الدواء، الموردين والشركات، وطباعة الفواتير بوضوح.',
           clientName: 'د. خالد مصطفى',
           createdAt: new Date().toISOString(),
+        },
+        {
+          title: 'ديمو تجريبي - سيستم كاشير ومبيعات متكامل',
+          system: 'محلات',
+          category: 'سوبر ماركت',
+          url: 'https://demo-pos.example.com',
+          description: 'نسخة تجريبية معروضة للجمهور الافتراضي للاختبار والمعاينة المباشرة.',
+          clientName: 'الجمهور افتراضي',
+          isDemo: true,
+          createdAt: new Date().toISOString(),
         }
       ];
 
       for (const proj of defaultProjects) {
         await addDoc(collection(db, 'projects'), proj);
+      }
+    } else {
+      // Check if any existing project is a demo item
+      const hasDemo = projectsSnap.docs.some((doc) => doc.data().isDemo === true);
+      if (!hasDemo) {
+        await addDoc(collection(db, 'projects'), {
+          title: 'ديمو تجريبي - سيستم كاشير ومبيعات متكامل',
+          system: 'محلات',
+          category: 'سوبر ماركت',
+          url: 'https://demo-pos.example.com',
+          clientEmail: 'demo@example.com',
+          hasRegisteredEmail: true,
+          description: 'نسخة ديمو تجريبية معروضة للجمهور الافتراضي للاختبار والمعاينة المباشرة.',
+          clientName: 'الجمهور افتراضي',
+          isDemo: true,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    // Seed default team members if empty
+    const teamSnap = await getDocs(collection(db, 'team_members'));
+    if (teamSnap.empty) {
+      const defaultTeam: Omit<TeamMember, 'id'>[] = [
+        {
+          name: 'البارودي (صاحب المشروع)',
+          email: 'baroudi@example.com',
+          phone: '01000000001',
+          whatsappPhone: '01000000001',
+          position: 'owner',
+          defaultCommissionRate: 100,
+          pinCode: '297062',
+          isActive: true,
+          allowedScreens: ['home', 'pos', 'sales', 'clients', 'packages', 'sector', 'expenses', 'reports', 'team', 'add-client'],
+          permissions: {
+            canManageProjects: true,
+            canManageSales: true,
+            canManagePackages: true,
+            canViewExpenses: true,
+            canManageTeam: true,
+            canViewReports: true,
+          },
+          createdAt: new Date().toISOString(),
+        },
+      ];
+
+      for (const tm of defaultTeam) {
+        await addDoc(collection(db, 'team_members'), tm);
       }
     }
   } catch (err) {
@@ -512,4 +570,66 @@ export function subscribeProjects(callback: (projects: ProjectItem[]) => void): 
     })) as ProjectItem[];
     callback(list);
   }, (err) => console.error('Error listening to projects:', err));
+}
+
+// Team Member CRUD
+export async function getTeamMembers(): Promise<TeamMember[]> {
+  const querySnap = await getDocs(collection(db, 'team_members'));
+  return querySnap.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as TeamMember[];
+}
+
+export async function addTeamMember(member: Omit<TeamMember, 'id'>): Promise<string> {
+  const docRef = await addDoc(collection(db, 'team_members'), member);
+  return docRef.id;
+}
+
+export async function updateTeamMember(id: string, member: Partial<TeamMember>): Promise<void> {
+  await updateDoc(doc(db, 'team_members', id), member);
+}
+
+export async function deleteTeamMember(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'team_members', id));
+}
+
+export function subscribeTeamMembers(callback: (members: TeamMember[]) => void): () => void {
+  return onSnapshot(collection(db, 'team_members'), (snapshot) => {
+    const list = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as TeamMember[];
+    callback(list);
+  }, (err) => console.error('Error listening to team_members:', err));
+}
+
+export async function resetTeamToOwnerOnly(): Promise<void> {
+  const querySnap = await getDocs(collection(db, 'team_members'));
+  for (const memberDoc of querySnap.docs) {
+    await deleteDoc(doc(db, 'team_members', memberDoc.id));
+  }
+
+  const ownerPayload: Omit<TeamMember, 'id'> = {
+    name: 'البارودي (صاحب المشروع)',
+    email: 'baroudi@example.com',
+    phone: '01000000001',
+    whatsappPhone: '01000000001',
+    position: 'owner',
+    defaultCommissionRate: 100,
+    pinCode: '297062',
+    isActive: true,
+    allowedScreens: ['home', 'pos', 'sales', 'clients', 'packages', 'sector', 'expenses', 'reports', 'team', 'add-client'],
+    permissions: {
+      canManageProjects: true,
+      canManageSales: true,
+      canManagePackages: true,
+      canViewExpenses: true,
+      canManageTeam: true,
+      canViewReports: true,
+    },
+    createdAt: new Date().toISOString(),
+  };
+
+  await addDoc(collection(db, 'team_members'), ownerPayload);
 }

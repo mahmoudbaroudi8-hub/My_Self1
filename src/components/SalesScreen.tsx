@@ -3,6 +3,7 @@ import { Receipt, Search, Filter, Check, Send, Trash2, Eye, Printer, Phone, Cale
 import { Sale, ScreenView } from '../types';
 import { exportSalesToExcel } from '../lib/excelExport';
 import { CorporateInvoiceModal } from './CorporateInvoiceModal';
+import { ProtectedDeleteModal } from './ProtectedDeleteModal';
 
 interface SalesScreenProps {
   sales: Sale[];
@@ -21,6 +22,16 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'mowakad' | 'morsal_qabl_dafa'>('all');
   const [selectedInvoice, setSelectedInvoice] = useState<Sale | null>(null);
   const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
+
+  const [deleteModalState, setDeleteModalState] = useState<{
+    isOpen: boolean;
+    saleId: string;
+    saleName: string;
+  }>({
+    isOpen: false,
+    saleId: '',
+    saleName: '',
+  });
 
   const filteredSales = sales.filter((s) => {
     const query = searchTerm.toLowerCase();
@@ -209,12 +220,14 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
 
                   <button
                     onClick={() => {
-                      if (confirm('هل أنت تأكد من حذف عملية البيع هذه؟')) {
-                        onDeleteSale(sale.id);
-                      }
+                      setDeleteModalState({
+                        isOpen: true,
+                        saleId: sale.id,
+                        saleName: sale.shopName || sale.clientName || 'عملية بيع',
+                      });
                     }}
                     className="text-gray-500 hover:text-red-400 p-1"
-                    title="حذف"
+                    title="حذف عملية البيع"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -232,6 +245,14 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
           onClose={() => setSelectedInvoice(null)}
         />
       )}
+
+      <ProtectedDeleteModal
+        isOpen={deleteModalState.isOpen}
+        title="حذف عملية بيع وفاتورة"
+        itemDescription={`الفاتورة الخاص بـ: "${deleteModalState.saleName}"`}
+        onConfirmDelete={() => onDeleteSale(deleteModalState.saleId)}
+        onClose={() => setDeleteModalState((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

@@ -1,6 +1,37 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Team Members Collection
+    match /team_members/{memberId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Projects Collection (linked with pricing model, status & assigned team)
+    match /projects/{projectId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // General App Collections
+    match /clients/{document=**} {
+      allow read, write: if true;
+    }
+    match /packages/{document=**} {
+      allow read, write: if true;
+    }
+    match /offers/{document=**} {
+      allow read, write: if true;
+    }
+    match /sales/{document=**} {
+      allow read, write: if true;
+    }
+    match /expenses/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Default fallback
     match /{document=**} {
       allow read, write: if true;
     }

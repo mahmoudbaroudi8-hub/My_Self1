@@ -114,6 +114,64 @@ export interface Expense {
   createdAt: string;
 }
 
+export type TeamMemberPosition = 'owner' | 'engineer' | 'media_buyer' | 'custom';
+
+export const POSITION_LABELS: Record<TeamMemberPosition, string> = {
+  owner: 'صاحب المشروع ومطور (مدير عام)',
+  engineer: 'مهندس / مطور برمجيات',
+  media_buyer: 'ميديا مان / تسويق وإعلانات',
+  custom: 'وظيفة مخصصة',
+};
+
+export interface TeamMemberPermissions {
+  canManageProjects: boolean;
+  canManageSales: boolean;
+  canManagePackages: boolean;
+  canViewExpenses: boolean;
+  canManageTeam: boolean;
+  canViewReports: boolean;
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  whatsappPhone?: string;
+  position: TeamMemberPosition;
+  customPositionTitle?: string;
+  defaultCommissionRate: number; // Percentage %
+  permissions: TeamMemberPermissions;
+  allowedScreens?: ScreenView[];
+  pinCode?: string;
+  isActive: boolean;
+  createdAt?: string;
+}
+
+export type PricingModel = 'full_sale' | 'monthly_subscription' | 'yearly_subscription';
+
+export const PRICING_MODEL_LABELS: Record<PricingModel, string> = {
+  full_sale: 'بيع كامل (دفعة الشراء المباشر)',
+  monthly_subscription: 'اشتراك شهري',
+  yearly_subscription: 'اشتراك سنوي',
+};
+
+export type PaymentStatus = 'unpaid' | 'partial' | 'full';
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  unpaid: 'غير مدفوع',
+  partial: 'دفع جزئي (مقدم/عربون)',
+  full: 'دفع كامل',
+};
+
+export type ProjectWorkStatus = 'under_construction' | 'completed' | 'paused';
+
+export const WORK_STATUS_LABELS: Record<ProjectWorkStatus, string> = {
+  under_construction: 'تحت الإنشاء وجاري العمل',
+  completed: 'مكتمل وتم التسليم',
+  paused: 'متوقف مؤقتاً',
+};
+
 export interface ProjectItem {
   id: string;
   title: string;
@@ -122,6 +180,24 @@ export interface ProjectItem {
   url: string;
   description?: string;
   clientName?: string;
+  clientEmail?: string;
+  hasRegisteredEmail?: boolean;
+  isDemo?: boolean;
+  // Payment and Milestone details
+  pricingModel?: PricingModel;
+  totalPrice?: number;
+  paidAmount?: number;
+  paymentStatus?: PaymentStatus;
+  projectStatus?: ProjectWorkStatus;
+  // Team assignment and commission rates
+  assignedEngineerId?: string;
+  assignedEngineerName?: string;
+  engineerCommissionRate?: number;
+  assignedMediaBuyerId?: string;
+  assignedMediaBuyerName?: string;
+  mediaBuyerCommissionRate?: number;
+  ownerCommissionRate?: number;
+  ownerIsEngineer?: boolean;
   createdAt?: string;
 }
 
@@ -134,4 +210,18 @@ export type ScreenView =
   | 'sector'
   | 'sales'
   | 'expenses'
-  | 'reports';
+  | 'reports'
+  | 'team';
+
+export const ALL_SCREENS_CONFIG: { id: ScreenView; label: string; iconName: string }[] = [
+  { id: 'home', label: 'الرئيسية والمشاريع', iconName: 'Home' },
+  { id: 'pos', label: 'نقطة البيع (الكاشير)', iconName: 'Monitor' },
+  { id: 'sales', label: 'المبيعات والمعاينات', iconName: 'Receipt' },
+  { id: 'clients', label: 'العملاء والديون', iconName: 'Users' },
+  { id: 'packages', label: 'الباقات والعروض', iconName: 'Settings' },
+  { id: 'sector', label: 'القطاعات والأنشطة', iconName: 'LayoutGrid' },
+  { id: 'expenses', label: 'المصروفات والخزينة', iconName: 'ShoppingBag' },
+  { id: 'reports', label: 'التقارير المالي والأرباح', iconName: 'BarChart3' },
+  { id: 'team', label: 'إدارة الفريق والصلاحيات', iconName: 'UserCheck' },
+  { id: 'add-client', label: 'إضافة عميل جديد', iconName: 'UserPlus' },
+];

@@ -1,5 +1,5 @@
 {
-  "name": "Business Manager - إدارة أنظمة نقاط البيع",
+  "name": "Baroudi System - إدارة أنظمة نقاط البيع",
   "description": "تطبيق PWA شخصي لمتابعة وإدارة مبيعات وتركيب أنظمة نقاط البيع POS، العملاء، الباقات، التقارير والمصاريف بالجنيه المصري.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Bell, Settings, User, X, CheckCircle2, Clock, AlertTriangle, ChevronRight, Receipt, Database, Smartphone, Monitor, LayoutGrid } from 'lucide-react';
-import { ScreenView, Sale, Client } from '../types';
+import { ScreenView, Sale, Client, TeamMember, POSITION_LABELS } from '../types';
 
 interface NavbarProps {
   currentScreen: ScreenView;
   onNavigate: (screen: ScreenView) => void;
   sales?: Sale[];
   clients?: Client[];
+  currentUser?: TeamMember | null;
   onOpenBackup?: () => void;
   onOpenInstallPwa?: () => void;
   isDesktopWide?: boolean;
@@ -18,6 +19,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigate,
   sales = [],
   clients = [],
+  currentUser = null,
   onOpenBackup,
   onOpenInstallPwa,
   isDesktopWide = true,
@@ -45,6 +47,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         return 'المصروفات والمشتريات';
       case 'reports':
         return 'التقارير المالية';
+      case 'team':
+        return 'الفريق والأدوار والصلاحيات';
       default:
         return 'الرئيسية';
     }
@@ -59,19 +63,32 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-30 px-4 py-3 bg-[#0B1220]/75 backdrop-blur-xl border-b border-white/10 flex items-center justify-between">
-        {/* Right side: App Owner Info */}
-        <div className="flex items-center gap-2.5">
+      <header className="sticky top-0 z-[100] w-full shrink-0 px-4 py-2.5 bg-[#070918] backdrop-blur-2xl border-b-2 border-[#FF7A1A]/30 shadow-[0_8px_30px_rgba(0,0,0,0.8)] flex items-center justify-between transition-all">
+        {/* Right side: App Owner Info & Team Navigation */}
+        <button
+          type="button"
+          onClick={() => onNavigate('team')}
+          className="flex items-center gap-2.5 text-right cursor-pointer hover:opacity-80 transition-opacity"
+          title="إدارة فريق العمل، البوسيشن والصلاحيات"
+        >
           <div className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center p-0.5 shadow-md shadow-[#FF7A1A]/10">
             <div className="w-full h-full rounded-full bg-[#0B1220]/90 flex items-center justify-center">
               <User className="w-4 h-4 text-[#FF7A1A]" />
             </div>
           </div>
           <div>
-            <span className="text-[10px] text-gray-400 block leading-tight font-medium">أهلاً بك</span>
-            <span className="text-xs font-bold text-white tracking-wide">مدير الأعمال</span>
+            <span className="text-[10px] text-gray-400 block leading-tight font-medium">
+              أهلاً بك ({currentUser?.name || 'الفريق'})
+            </span>
+            <span className="text-xs font-bold text-white tracking-wide">
+              {currentUser
+                ? (currentUser.position === 'custom'
+                    ? currentUser.customPositionTitle || 'وظيفة مخصصة'
+                    : POSITION_LABELS[currentUser.position] || 'عضو فريق')
+                : 'مدير وصاحب المشروع'}
+            </span>
           </div>
-        </div>
+        </button>
 
         {/* Title center */}
         <div className="text-center">

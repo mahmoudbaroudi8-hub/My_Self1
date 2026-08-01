@@ -103,3 +103,27 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 122, 26, 0.6);
 }
+
+/* Horizontal Scroll Strip for Filter Rows */
+.horizontal-scroll-strip {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 122, 26, 0.5) rgba(255, 255, 255, 0.05);
+}
+
+.horizontal-scroll-strip::-webkit-scrollbar {
+  height: 4px;
+}
+
+.horizontal-scroll-strip::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.horizontal-scroll-strip::-webkit-scrollbar-thumb {
+  background: rgba(255, 122, 26, 0.5);
+  border-radius: 10px;
+}
+
+.horizontal-scroll-strip::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 122, 26, 0.8);
+}

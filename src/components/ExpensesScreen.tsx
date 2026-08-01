@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ShoppingBag, Plus, Trash2, Calendar, CreditCard, Tag, FileSpreadsheet } from 'lucide-react';
 import { Expense, SystemType } from '../types';
 import { exportExpensesToExcel } from '../lib/excelExport';
+import { ProtectedDeleteModal } from './ProtectedDeleteModal';
 
 interface ExpensesScreenProps {
   expenses: Expense[];
@@ -22,6 +23,16 @@ export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  const [deleteModalState, setDeleteModalState] = useState<{
+    isOpen: boolean;
+    expenseId: string;
+    expenseTitle: string;
+  }>({
+    isOpen: false,
+    expenseId: '',
+    expenseTitle: '',
+  });
 
   const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
@@ -131,12 +142,14 @@ export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
                 </span>
                 <button
                   onClick={() => {
-                    if (confirm('هل أنت تأكد من حذف هذا المصروف؟')) {
-                      onDeleteExpense(expense.id);
-                    }
+                    setDeleteModalState({
+                      isOpen: true,
+                      expenseId: expense.id,
+                      expenseTitle: expense.title,
+                    });
                   }}
                   className="text-gray-500 hover:text-red-400 p-1"
-                  title="حذف"
+                  title="حذف المصروف"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -254,6 +267,14 @@ export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
           </div>
         </div>
       )}
+
+      <ProtectedDeleteModal
+        isOpen={deleteModalState.isOpen}
+        title="حذف مصروف من السجل"
+        itemDescription={`المصروف: "${deleteModalState.expenseTitle}"`}
+        onConfirmDelete={() => onDeleteExpense(deleteModalState.expenseId)}
+        onClose={() => setDeleteModalState((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

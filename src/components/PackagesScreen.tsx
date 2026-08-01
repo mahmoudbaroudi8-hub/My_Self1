@@ -26,8 +26,15 @@ import {
   ArrowUpRight,
   Filter,
   ShieldCheck,
-  CheckSquare
+  CheckSquare,
+  Mail,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  RotateCcw,
+  X
 } from 'lucide-react';
+import { ProtectedDeleteModal } from './ProtectedDeleteModal';
 import {
   Package,
   Offer,
@@ -36,13 +43,65 @@ import {
   SystemType,
   CategoryType,
   OfferDurationUnit,
+  PricingModel,
+  PaymentStatus,
+  ProjectWorkStatus,
+  TeamMember,
+  POSITION_LABELS,
+  PRICING_MODEL_LABELS,
+  PAYMENT_STATUS_LABELS,
+  WORK_STATUS_LABELS,
   getCategoriesForSystem
 } from '../types';
+
+const HorizontalSwipeContainer: React.FC<{
+  children: React.ReactNode;
+  className?: string;
+}> = ({ children, className = '' }) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = React.useState(false);
+  const [startX, setStartX] = React.useState(0);
+  const [scrollLeft, setScrollLeft] = React.useState(0);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!containerRef.current) return;
+    setIsDragging(true);
+    setStartX(e.pageX - containerRef.current.offsetLeft);
+    setScrollLeft(containerRef.current.scrollLeft);
+  };
+
+  const handleMouseLeave = () => setIsDragging(false);
+  const handleMouseUp = () => setIsDragging(false);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !containerRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - containerRef.current.offsetLeft;
+    const walk = (x - startX) * 2;
+    containerRef.current.scrollLeft = scrollLeft - walk;
+  };
+
+  return (
+    <div className="w-full relative select-none">
+      <div
+        ref={containerRef}
+        onMouseDown={handleMouseDown}
+        onMouseLeave={handleMouseLeave}
+        onMouseUp={handleMouseUp}
+        onMouseMove={handleMouseMove}
+        className={`w-full flex flex-nowrap items-center gap-1.5 overflow-x-auto horizontal-scroll-strip py-1 px-1 cursor-grab active:cursor-grabbing ${className}`}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
 
 interface PackagesScreenProps {
   packages: Package[];
   offers: Offer[];
   projects: ProjectItem[];
+  teamMembers?: TeamMember[];
   onAddPackage: (pkg: Omit<Package, 'id'>) => Promise<string>;
   onUpdatePackage: (id: string, pkg: Partial<Package>) => Promise<void>;
   onDeletePackage: (id: string) => Promise<void>;
@@ -62,6 +121,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   packages,
   offers,
   projects,
+  teamMembers = [],
   onAddPackage,
   onUpdatePackage,
   onDeletePackage,
@@ -84,7 +144,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   // Filter state for catalog
   const [catalogSystemFilter, setCatalogSystemFilter] = useState<string>('الكل');
   const [catalogCategoryFilter, setCatalogCategoryFilter] = useState<string>('الكل');
-  const [catalogTypeFilter, setCatalogTypeFilter] = useState<'all' | 'packages' | 'offers' | 'projects'>('all');
+  const [catalogTypeFilter, setCatalogTypeFilter] = useState<'all' | 'packages' | 'offers' | 'projects' | 'demos'>('all');
   const [catalogSearchQuery, setCatalogSearchQuery] = useState<string>('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -114,7 +174,39 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   const [projectCategory, setProjectCategory] = useState<CategoryType>('سوبر ماركت');
   const [projectUrl, setProjectUrl] = useState('');
   const [projectClientName, setProjectClientName] = useState('');
+  const [projectClientEmail, setProjectClientEmail] = useState('');
+  const [projectHasRegisteredEmail, setProjectHasRegisteredEmail] = useState(false);
+  const [projectIsDemo, setProjectIsDemo] = useState(false);
   const [projectDescription, setProjectDescription] = useState('');
+
+  // Extended project pricing, payment status & team assignments
+  const [projectPricingModel, setProjectPricingModel] = useState<PricingModel>('full_sale');
+  const [projectTotalPrice, setProjectTotalPrice] = useState<number>(0);
+  const [projectPaidAmount, setProjectPaidAmount] = useState<number>(0);
+
+  const [projectAssignedEngineerId, setProjectAssignedEngineerId] = useState<string>('');
+  const [projectAssignedEngineerName, setProjectAssignedEngineerName] = useState<string>('');
+  const [projectEngineerCommissionRate, setProjectEngineerCommissionRate] = useState<number>(30);
+
+  const [projectAssignedMediaBuyerId, setProjectAssignedMediaBuyerId] = useState<string>('');
+  const [projectAssignedMediaBuyerName, setProjectAssignedMediaBuyerName] = useState<string>('');
+  const [projectMediaBuyerCommissionRate, setProjectMediaBuyerCommissionRate] = useState<number>(20);
+
+  const [projectOwnerCommissionRate, setProjectOwnerCommissionRate] = useState<number>(50);
+  const [projectOwnerIsEngineer, setProjectOwnerIsEngineer] = useState<boolean>(true);
+
+  // Protected Delete Modal State
+  const [deleteModalState, setDeleteModalState] = useState<{
+    isOpen: boolean;
+    title: string;
+    itemDescription: string;
+    onConfirm: () => Promise<void> | void;
+  }>({
+    isOpen: false,
+    title: '',
+    itemDescription: '',
+    onConfirm: () => {},
+  });
 
   // Shared feature lists
   const defaultFeaturesList: PackageFeature[] = [
@@ -203,7 +295,28 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
       setProjectCategory('سوبر ماركت');
       setProjectUrl('');
       setProjectClientName('');
+      setProjectClientEmail('');
+      setProjectHasRegisteredEmail(false);
+      setProjectIsDemo(false);
       setProjectDescription('');
+
+      setProjectPricingModel('full_sale');
+      setProjectTotalPrice(0);
+      setProjectPaidAmount(0);
+
+      const defaultEngineer = teamMembers.find((m) => m.position === 'engineer' || m.position === 'owner');
+      const defaultMedia = teamMembers.find((m) => m.position === 'media_buyer');
+
+      setProjectAssignedEngineerId(defaultEngineer?.id || '');
+      setProjectAssignedEngineerName(defaultEngineer?.name || '');
+      setProjectEngineerCommissionRate(defaultEngineer?.defaultCommissionRate || 30);
+
+      setProjectAssignedMediaBuyerId(defaultMedia?.id || '');
+      setProjectAssignedMediaBuyerName(defaultMedia?.name || '');
+      setProjectMediaBuyerCommissionRate(defaultMedia?.defaultCommissionRate || 20);
+
+      setProjectOwnerCommissionRate(50);
+      setProjectOwnerIsEngineer(true);
     } else {
       const found = projects.find((pr) => pr.id === selectedProjectId);
       if (found) {
@@ -212,10 +325,28 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
         setProjectCategory(found.category || 'سوبر ماركت');
         setProjectUrl(found.url || '');
         setProjectClientName(found.clientName || '');
+        setProjectClientEmail(found.clientEmail || '');
+        setProjectHasRegisteredEmail(!!found.hasRegisteredEmail || !!found.clientEmail);
+        setProjectIsDemo(!!found.isDemo);
         setProjectDescription(found.description || '');
+
+        setProjectPricingModel(found.pricingModel || 'full_sale');
+        setProjectTotalPrice(found.totalPrice || 0);
+        setProjectPaidAmount(found.paidAmount || 0);
+
+        setProjectAssignedEngineerId(found.assignedEngineerId || '');
+        setProjectAssignedEngineerName(found.assignedEngineerName || '');
+        setProjectEngineerCommissionRate(found.engineerCommissionRate ?? 30);
+
+        setProjectAssignedMediaBuyerId(found.assignedMediaBuyerId || '');
+        setProjectAssignedMediaBuyerName(found.assignedMediaBuyerName || '');
+        setProjectMediaBuyerCommissionRate(found.mediaBuyerCommissionRate ?? 20);
+
+        setProjectOwnerCommissionRate(found.ownerCommissionRate ?? 50);
+        setProjectOwnerIsEngineer(found.ownerIsEngineer !== false);
       }
     }
-  }, [selectedProjectId, projects]);
+  }, [selectedProjectId, projects, teamMembers]);
 
   // Feature Toggles
   const togglePkgFeature = (idx: number) => {
@@ -286,19 +417,16 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   };
 
   // DELETE PACKAGE BY ID
-  const handleDeletePackageById = async (id: string, name: string) => {
-    if (confirm(`هل أنت تأكد من حذف باقة "${name}"؟`)) {
-      setIsSubmitting(true);
-      try {
+  const handleDeletePackageById = (id: string, name: string) => {
+    setDeleteModalState({
+      isOpen: true,
+      title: 'حذف باقة من النظام',
+      itemDescription: `الباقة: "${name}"`,
+      onConfirm: async () => {
         await onDeletePackage(id);
         if (selectedPackageId === id) setSelectedPackageId('new');
-        alert('تم حذف الباقة بنجاح.');
-      } catch (err) {
-        console.error('Error deleting package:', err);
-      } finally {
-        setIsSubmitting(false);
-      }
-    }
+      },
+    });
   };
 
   // SAVE OFFER
@@ -350,19 +478,16 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   };
 
   // DELETE OFFER BY ID
-  const handleDeleteOfferById = async (id: string, name: string) => {
-    if (confirm(`هل أنت تأكد من حذف عرض "${name}"؟`)) {
-      setIsSubmitting(true);
-      try {
+  const handleDeleteOfferById = (id: string, name: string) => {
+    setDeleteModalState({
+      isOpen: true,
+      title: 'حذف عرض ترويجي',
+      itemDescription: `العرض: "${name}"`,
+      onConfirm: async () => {
         await onDeleteOffer(id);
         if (selectedOfferId === id) setSelectedOfferId('new');
-        alert('تم حذف العرض بنجاح.');
-      } catch (err) {
-        console.error('Error deleting offer:', err);
-      } finally {
-        setIsSubmitting(false);
-      }
-    }
+      },
+    });
   };
 
   // SAVE PROJECT
@@ -381,29 +506,68 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
       formattedUrl = 'https://' + formattedUrl;
     }
 
+    const finalClientName = projectClientName.trim() || (projectIsDemo ? 'الجمهور افتراضي' : undefined);
+
+    const total = Number(projectTotalPrice) || 0;
+    const paid = Number(projectPaidAmount) || 0;
+
+    // Derive Payment Status
+    let computedPaymentStatus: PaymentStatus = 'unpaid';
+    if (paid >= total && total > 0) {
+      computedPaymentStatus = 'full';
+    } else if (paid > 0 && paid < total) {
+      computedPaymentStatus = 'partial';
+    }
+
+    // Derive Work Status
+    let computedWorkStatus: ProjectWorkStatus = 'under_construction';
+    if (paid >= total && total > 0) {
+      computedWorkStatus = 'completed';
+    }
+
+    // Get assigned team member names
+    const assignedEng = teamMembers.find((m) => m.id === projectAssignedEngineerId);
+    const assignedMedia = teamMembers.find((m) => m.id === projectAssignedMediaBuyerId);
+
+    const projectPayload: Omit<ProjectItem, 'id'> = {
+      title: projectTitle.trim(),
+      system: projectSystem,
+      category: projectCategory,
+      url: formattedUrl,
+      clientName: finalClientName,
+      clientEmail: projectClientEmail.trim() || undefined,
+      hasRegisteredEmail: projectHasRegisteredEmail || !!projectClientEmail.trim(),
+      isDemo: projectIsDemo,
+      description: projectDescription.trim() || undefined,
+
+      pricingModel: projectPricingModel,
+      totalPrice: total,
+      paidAmount: paid,
+      paymentStatus: computedPaymentStatus,
+      projectStatus: computedWorkStatus,
+
+      assignedEngineerId: projectAssignedEngineerId || undefined,
+      assignedEngineerName: assignedEng?.name || projectAssignedEngineerName.trim() || undefined,
+      engineerCommissionRate: Number(projectEngineerCommissionRate) || 0,
+
+      assignedMediaBuyerId: projectAssignedMediaBuyerId || undefined,
+      assignedMediaBuyerName: assignedMedia?.name || projectAssignedMediaBuyerName.trim() || undefined,
+      mediaBuyerCommissionRate: Number(projectMediaBuyerCommissionRate) || 0,
+
+      ownerCommissionRate: Number(projectOwnerCommissionRate) || 50,
+      ownerIsEngineer: projectOwnerIsEngineer,
+
+      createdAt: new Date().toISOString(),
+    };
+
     setIsSubmitting(true);
     try {
       if (selectedProjectId === 'new') {
-        await onAddProject({
-          title: projectTitle.trim(),
-          system: projectSystem,
-          category: projectCategory,
-          url: formattedUrl,
-          clientName: projectClientName.trim() || undefined,
-          description: projectDescription.trim() || undefined,
-          createdAt: new Date().toISOString(),
-        });
-        alert('تمت إضافة المشروع للمعرض بنجاح!');
+        await onAddProject(projectPayload);
+        alert(projectIsDemo ? 'تمت إضافة رابط الديمو (الجمهور افتراضي) بنجاح!' : 'تمت إضافة المشروع وتكوينه بنجاح!');
       } else {
-        await onUpdateProject(selectedProjectId, {
-          title: projectTitle.trim(),
-          system: projectSystem,
-          category: projectCategory,
-          url: formattedUrl,
-          clientName: projectClientName.trim() || undefined,
-          description: projectDescription.trim() || undefined,
-        });
-        alert('تم تحديث بيانات المشروع بنجاح!');
+        await onUpdateProject(selectedProjectId, projectPayload);
+        alert('تم تحديث بيانات وتشغيل وتكلفة المشروع بنجاح!');
       }
     } catch (err) {
       console.error('Error saving project:', err);
@@ -414,19 +578,16 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   };
 
   // DELETE PROJECT BY ID
-  const handleDeleteProjectById = async (id: string, title: string) => {
-    if (confirm(`هل أنت تأكد من حذف مشروع "${title}"؟`)) {
-      setIsSubmitting(true);
-      try {
+  const handleDeleteProjectById = (id: string, title: string) => {
+    setDeleteModalState({
+      isOpen: true,
+      title: 'حذف مشروع من المعرض',
+      itemDescription: `المشروع: "${title}"`,
+      onConfirm: async () => {
         await onDeleteProject(id);
         if (selectedProjectId === id) setSelectedProjectId('new');
-        alert('تم حذف المشروع بنجاح.');
-      } catch (err) {
-        console.error('Error deleting project:', err);
-      } finally {
-        setIsSubmitting(false);
-      }
-    }
+      },
+    });
   };
 
   // SAVE ACCOUNT CREDENTIALS
@@ -482,12 +643,17 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   };
 
   const generateTextForProject = (prj: ProjectItem) => {
-    return `🚀 *مشروع سابق / نموذج حي*\n` +
+    const isDemo = prj.isDemo;
+    const header = isDemo ? '🧪 *ديمو تجريبي (الجمهور افتراضي)*' : '🚀 *مشروع سابق / نموذج حي*';
+    const clientText = prj.clientName ? `👤 العميل / المكان: ${prj.clientName}\n` : (isDemo ? `👤 الجمهور: الجمهور افتراضي\n` : '');
+    return `${header}\n` +
       `📌 *${prj.title}*\n` +
       `🏢 النظام: ${prj.system} | المجال: ${prj.category}\n` +
-      (prj.clientName ? `👤 العميل / المكان: ${prj.clientName}\n` : '') +
+      clientText +
+      (prj.clientEmail ? `📧 إيميل الحساب/المشروع: ${prj.clientEmail}\n` : '') +
+      (prj.hasRegisteredEmail || prj.clientEmail ? `✓ متسجل ببريد إلكتروني\n` : '') +
       (prj.description ? `📝 التفاصيل: ${prj.description}\n` : '') +
-      `🔗 *رابط المعاينة المباشر:*\n${prj.url}\n\n` +
+      `🔗 *رابط المعاينة والتجربة المباشرة:*\n${prj.url}\n\n` +
       `لطلب تطبيق سيستم مماثل لنشاطك، تواصل معنا فوراً!`;
   };
 
@@ -531,16 +697,36 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   });
 
   const filteredCatalogProjects = projects.filter((prj) => {
+    if (prj.isDemo) return false;
     if (catalogSystemFilter !== 'الكل' && prj.system !== catalogSystemFilter) return false;
     if (catalogCategoryFilter !== 'الكل' && prj.category !== catalogCategoryFilter) return false;
     if (query) {
       const matchTitle = (prj.title || '').toLowerCase().includes(query);
       const matchClient = (prj.clientName || '').toLowerCase().includes(query); // اسم المحل / العميل
+      const matchEmail = (prj.clientEmail || '').toLowerCase().includes(query); // إيميل المشروع / الحساب
       const matchDesc = (prj.description || '').toLowerCase().includes(query);
       const matchUrl = (prj.url || '').toLowerCase().includes(query);
       const matchSys = (prj.system || '').toLowerCase().includes(query);
       const matchCat = (prj.category || '').toLowerCase().includes(query);
-      return matchTitle || matchClient || matchDesc || matchUrl || matchSys || matchCat;
+      return matchTitle || matchClient || matchEmail || matchDesc || matchUrl || matchSys || matchCat;
+    }
+    return true;
+  });
+
+  const filteredCatalogDemos = projects.filter((prj) => {
+    if (!prj.isDemo) return false;
+    if (catalogSystemFilter !== 'الكل' && prj.system !== catalogSystemFilter) return false;
+    if (catalogCategoryFilter !== 'الكل' && prj.category !== catalogCategoryFilter) return false;
+    if (query) {
+      const matchTitle = (prj.title || '').toLowerCase().includes(query);
+      const matchClient = (prj.clientName || 'الجمهور افتراضي').toLowerCase().includes(query);
+      const matchEmail = (prj.clientEmail || '').toLowerCase().includes(query);
+      const matchDesc = (prj.description || '').toLowerCase().includes(query);
+      const matchUrl = (prj.url || '').toLowerCase().includes(query);
+      const matchSys = (prj.system || '').toLowerCase().includes(query);
+      const matchCat = (prj.category || '').toLowerCase().includes(query);
+      const matchDemoKey = 'ديمو تجريبي جمهور افتراضي الجمهور'.includes(query);
+      return matchTitle || matchClient || matchEmail || matchDesc || matchUrl || matchSys || matchCat || matchDemoKey;
     }
     return true;
   });
@@ -561,11 +747,11 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
       </div>
 
       {/* Main Navigation Tabs */}
-      <div className="flex gap-1 p-1 bg-[#121C30]/90 rounded-2xl border border-white/10 text-[11px] font-bold overflow-x-auto scrollbar-none">
+      <HorizontalSwipeContainer className="p-1 bg-[#121C30]/90 rounded-2xl border border-white/10 text-[11px] font-bold">
         <button
           type="button"
           onClick={() => setActiveTab('catalog')}
-          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'catalog'
               ? 'bg-[#FF7A1A] text-white shadow-lg shadow-[#FF7A1A]/20'
               : 'text-gray-400 hover:text-white'
@@ -581,7 +767,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
             setSelectedPackageId('new');
             setActiveTab('manage_packages');
           }}
-          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'manage_packages'
               ? 'bg-[#FF7A1A] text-white shadow-lg'
               : 'text-gray-400 hover:text-white'
@@ -597,7 +783,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
             setSelectedOfferId('new');
             setActiveTab('manage_offers');
           }}
-          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'manage_offers'
               ? 'bg-amber-500 text-white shadow-lg'
               : 'text-gray-400 hover:text-white'
@@ -613,7 +799,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
             setSelectedProjectId('new');
             setActiveTab('manage_projects');
           }}
-          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'manage_projects'
               ? 'bg-emerald-600 text-white shadow-lg'
               : 'text-gray-400 hover:text-white'
@@ -626,7 +812,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('account')}
-          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+          className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${
             activeTab === 'account'
               ? 'bg-blue-600 text-white shadow-lg'
               : 'text-gray-400 hover:text-white'
@@ -635,7 +821,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
           <User className="w-3.5 h-3.5" />
           <span>الحساب والتثبيت</span>
         </button>
-      </div>
+      </HorizontalSwipeContainer>
 
       {/* ---------------- 1. CATALOG TAB (ORGANIZED SECTIONS WITH FILTER) ---------------- */}
       {activeTab === 'catalog' && (
@@ -646,44 +832,58 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
               <span className="flex items-center gap-1.5">
                 <Filter className="w-4 h-4 text-[#FF7A1A]" /> تصفية الكتالوج والبحث
               </span>
-              {(catalogSystemFilter !== 'الكل' || catalogCategoryFilter !== 'الكل' || catalogTypeFilter !== 'all' || catalogSearchQuery) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCatalogSystemFilter('الكل');
-                    setCatalogCategoryFilter('الكل');
-                    setCatalogTypeFilter('all');
-                    setCatalogSearchQuery('');
-                  }}
-                  className="text-[10px] text-amber-400 hover:underline font-bold"
-                >
-                  إعادة ضبط الفلترة
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setCatalogSystemFilter('الكل');
+                  setCatalogCategoryFilter('الكل');
+                  setCatalogTypeFilter('all');
+                  setCatalogSearchQuery('');
+                }}
+                className={`text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 transition-all ${
+                  (catalogSystemFilter !== 'الكل' || catalogCategoryFilter !== 'الكل' || catalogTypeFilter !== 'all' || catalogSearchQuery)
+                    ? 'bg-[#FF7A1A]/20 text-[#FF7A1A] border border-[#FF7A1A]/40 hover:bg-[#FF7A1A]/30 shadow-sm'
+                    : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10'
+                }`}
+                title="إعادة ضبط الفلترة وإظهار كافة الباقات والعروض"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-[#FF7A1A]" />
+                <span>إعادة ضبط (عرض الكل)</span>
+              </button>
             </div>
 
             {/* Catalog Search Input Field */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-gray-400 absolute right-3 top-2.5" />
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 text-[#FF7A1A] absolute right-3 top-2.5" />
               <input
                 type="text"
                 placeholder="ابحث باسم الباقة، العرض، اسم المحل / العميل، أو رابط المشروع..."
                 value={catalogSearchQuery}
                 onChange={(e) => setCatalogSearchQuery(e.target.value)}
-                className="glass-input w-full pr-9 pl-3 py-2 text-xs"
+                className="glass-input w-full pr-9 pl-9 py-2 text-xs"
               />
+              {catalogSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setCatalogSearchQuery('')}
+                  className="absolute left-2.5 top-2 p-1 text-gray-300 hover:text-white rounded-lg bg-white/10 hover:bg-white/20 transition-all"
+                  title="مسح البحث"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             {/* System Filter Chips */}
             <div className="space-y-1">
               <span className="text-[10px] text-gray-400 font-medium block">النظام الرئيسي:</span>
-              <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              <HorizontalSwipeContainer>
                 {['الكل', 'محلات', 'شركات', 'صالات جيم', 'برامج', 'أخرى'].map((sys) => (
                   <button
                     key={sys}
                     type="button"
                     onClick={() => setCatalogSystemFilter(sys)}
-                    className={`px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-xs whitespace-nowrap shrink-0 transition-all ${
                       catalogSystemFilter === sys
                         ? 'bg-[#FF7A1A] text-white font-bold shadow-md shadow-[#FF7A1A]/30'
                         : 'bg-white/5 text-gray-300 hover:bg-white/10'
@@ -692,13 +892,13 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
                     {sys}
                   </button>
                 ))}
-              </div>
+              </HorizontalSwipeContainer>
             </div>
 
             {/* Category Filter Chips */}
             <div className="space-y-1 pt-1 border-t border-white/5">
               <span className="text-[10px] text-gray-400 font-medium block">القسم الفرعي / المجال:</span>
-              <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              <HorizontalSwipeContainer>
                 {(catalogSystemFilter !== 'الكل'
                   ? ['الكل', ...getCategoriesForSystem(catalogSystemFilter as SystemType)]
                   : ['الكل', 'سوبر ماركت', 'عقارات', 'مقاولات', 'سياحة', 'استثمار', 'أدوية', 'صيدلية', 'ملابس', 'مطعم', 'صالة صغيرة', 'عادية', 'فوق المتوسط', 'كبيرة', 'تطبيق إداري', 'برنامج إداري', 'نظام شخصي', 'ورش', 'عيادات', 'مصانع', 'خدمات', 'أخرى']
@@ -707,7 +907,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
                     key={cat}
                     type="button"
                     onClick={() => setCatalogCategoryFilter(cat)}
-                    className={`px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-xs whitespace-nowrap shrink-0 transition-all ${
                       catalogCategoryFilter === cat
                         ? 'bg-amber-500 text-white font-bold shadow-md shadow-amber-500/30'
                         : 'bg-white/5 text-gray-300 hover:bg-white/10'
@@ -716,47 +916,58 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
                     {cat}
                   </button>
                 ))}
-              </div>
+              </HorizontalSwipeContainer>
             </div>
 
             {/* Type Filter Buttons */}
-            <div className="grid grid-cols-4 p-1 bg-black/30 rounded-xl text-[11px] font-semibold border border-white/5 gap-0.5">
-              <button
-                type="button"
-                onClick={() => setCatalogTypeFilter('all')}
-                className={`py-1.5 rounded-lg text-center transition-all ${
-                  catalogTypeFilter === 'all' ? 'bg-[#FF7A1A] text-white font-bold' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                الكل ({filteredCatalogPackages.length + filteredCatalogOffers.length + filteredCatalogProjects.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setCatalogTypeFilter('packages')}
-                className={`py-1.5 rounded-lg text-center transition-all ${
-                  catalogTypeFilter === 'packages' ? 'bg-[#FF7A1A] text-white font-bold' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                الباقات ({filteredCatalogPackages.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setCatalogTypeFilter('offers')}
-                className={`py-1.5 rounded-lg text-center transition-all ${
-                  catalogTypeFilter === 'offers' ? 'bg-amber-500 text-white font-bold' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                العروض ({filteredCatalogOffers.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setCatalogTypeFilter('projects')}
-                className={`py-1.5 rounded-lg text-center transition-all ${
-                  catalogTypeFilter === 'projects' ? 'bg-emerald-600 text-white font-bold' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                المشاريع ({filteredCatalogProjects.length})
-              </button>
+            <div className="p-1 bg-black/30 rounded-xl text-[11px] font-semibold border border-white/5">
+              <HorizontalSwipeContainer>
+                <button
+                  type="button"
+                  onClick={() => setCatalogTypeFilter('all')}
+                  className={`py-1.5 px-3 rounded-lg text-center whitespace-nowrap shrink-0 transition-all ${
+                    catalogTypeFilter === 'all' ? 'bg-[#FF7A1A] text-white font-bold' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  الكل ({filteredCatalogPackages.length + filteredCatalogOffers.length + filteredCatalogProjects.length + filteredCatalogDemos.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCatalogTypeFilter('packages')}
+                  className={`py-1.5 px-3 rounded-lg text-center whitespace-nowrap shrink-0 transition-all ${
+                    catalogTypeFilter === 'packages' ? 'bg-[#FF7A1A] text-white font-bold' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  الباقات ({filteredCatalogPackages.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCatalogTypeFilter('offers')}
+                  className={`py-1.5 px-3 rounded-lg text-center whitespace-nowrap shrink-0 transition-all ${
+                    catalogTypeFilter === 'offers' ? 'bg-amber-500 text-white font-bold' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  العروض ({filteredCatalogOffers.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCatalogTypeFilter('projects')}
+                  className={`py-1.5 px-3 rounded-lg text-center whitespace-nowrap shrink-0 transition-all ${
+                    catalogTypeFilter === 'projects' ? 'bg-emerald-600 text-white font-bold' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  المشاريع ({filteredCatalogProjects.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCatalogTypeFilter('demos')}
+                  className={`py-1.5 px-3 rounded-lg text-center whitespace-nowrap shrink-0 transition-all ${
+                    catalogTypeFilter === 'demos' ? 'bg-purple-600 text-white font-bold shadow-md shadow-purple-600/30' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  ديمو ({filteredCatalogDemos.length})
+                </button>
+              </HorizontalSwipeContainer>
             </div>
           </div>
 
@@ -1144,18 +1355,62 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
                           </p>
                         )}
 
+                        {/* Direct URL & Email Display Boxes (Matching Twin Boxes) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {/* Direct URL Display Box */}
+                          <div className="p-2 bg-emerald-950/40 rounded-xl border border-emerald-500/20 flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span className="text-[10px] text-emerald-200 truncate dir-ltr font-mono">
+                                {prj.url}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(prj.url);
+                                alert('تم نسخ رابط المشروع!');
+                              }}
+                              className="text-[9px] text-emerald-300 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/30 px-2 py-0.5 rounded-md border border-emerald-400/30 transition-all shrink-0"
+                              title="نسخ رابط المشروع"
+                            >
+                              نسخ الرابط
+                            </button>
+                          </div>
+
+                          {/* Direct Email Display Box */}
+                          <div className="p-2 bg-blue-950/40 rounded-xl border border-blue-500/20 flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Mail className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                              <span className="text-[10px] text-blue-200 truncate dir-ltr font-mono">
+                                {prj.clientEmail || (prj.hasRegisteredEmail ? 'متسجل ببريد ✓' : 'بدون بريد')}
+                              </span>
+                            </div>
+                            {prj.clientEmail ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(prj.clientEmail!);
+                                  alert('تم نسخ البريد الإلكتروني للمشروع!');
+                                }}
+                                className="text-[9px] text-blue-300 hover:text-white bg-blue-500/20 hover:bg-blue-500/30 px-2 py-0.5 rounded-md border border-blue-400/30 transition-all shrink-0"
+                                title="نسخ البريد الإلكتروني"
+                              >
+                                نسخ الإيميل
+                              </button>
+                            ) : prj.hasRegisteredEmail ? (
+                              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-md border border-emerald-500/30 shrink-0">
+                                متسجل ✓
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+
                         {prj.description && (
                           <p className="text-[11px] text-gray-300 leading-relaxed bg-black/30 p-2.5 rounded-xl border border-white/5">
                             {prj.description}
                           </p>
                         )}
-
-                        {/* Direct URL Display Box */}
-                        <div className="p-2 bg-emerald-950/40 rounded-xl border border-emerald-500/20 flex items-center justify-between">
-                          <span className="text-[10px] text-emerald-200 truncate dir-ltr font-mono max-w-[220px]">
-                            {prj.url}
-                          </span>
-                        </div>
 
                         {/* Card Action Controls: Copy, WhatsApp, Edit, Delete */}
                         <div className="flex items-center justify-between pt-2.5 border-t border-white/10">
@@ -1222,6 +1477,237 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
                   >
                     + اضغط هنا لإضافة مشروع جديد للمعرض
                   </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ---------------- SECTION 4: DEMOS (الجمهور الافتراضي) ---------------- */}
+          {(catalogTypeFilter === 'all' || catalogTypeFilter === 'demos') && (
+            <div className="space-y-3">
+              {/* Section Header */}
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                    <FolderKanban className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-xs font-extrabold text-white">الروابط التجريبية (الديمو - الجمهور الافتراضي)</h2>
+                    <p className="text-[10px] text-gray-400">
+                      روابط ديمو جاهزة للعرض والاختبار المباشر مخصصة للجمهور الافتراضي
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    {filteredCatalogDemos.length} روابط تجريبية
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedProjectId('new');
+                      setProjectTitle('');
+                      setProjectUrl('');
+                      setProjectIsDemo(true);
+                      setProjectClientName('الجمهور افتراضي');
+                      setActiveTab('manage_projects');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold transition-all flex items-center gap-1 shadow-sm"
+                  >
+                    <span>+ إضافة ديمو</span>
+                  </button>
+                </div>
+              </div>
+
+              {filteredCatalogDemos.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {filteredCatalogDemos.map((prj) => {
+                    const textContent = generateTextForProject(prj);
+
+                    return (
+                      <div
+                        key={prj.id}
+                        className="glass-card p-4 space-y-3 border border-purple-500/30 hover:border-purple-500/60 transition-all bg-gradient-to-b from-purple-950/20 to-black/30 shadow-lg relative group"
+                      >
+                        {/* Demo Badge Header */}
+                        <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-2.5">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                🧪 ديمو تجريبي
+                              </span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                {prj.system}
+                              </span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white/10 text-gray-300">
+                                {prj.category}
+                              </span>
+                            </div>
+                            <h3 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors">
+                              {prj.title}
+                            </h3>
+                          </div>
+
+                          <a
+                            href={prj.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold flex items-center gap-1 transition-all shadow-md shrink-0"
+                            title="فتح رابط الديمو في نافذة جديدة"
+                          >
+                            <span>فتح الديمو</span>
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+
+                        <p className="text-[11px] text-purple-200 font-medium">
+                          الجمهور / المستهدف: <strong className="text-white">{prj.clientName || 'الجمهور افتراضي'}</strong>
+                        </p>
+
+                        {/* Direct URL & Email Display Boxes */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="p-2 bg-purple-950/40 rounded-xl border border-purple-500/20 flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Globe className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                              <span className="text-[10px] text-purple-200 truncate dir-ltr font-mono">
+                                {prj.url}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(prj.url);
+                                alert('تم نسخ رابط الديمو!');
+                              }}
+                              className="text-[9px] text-purple-300 hover:text-white bg-purple-500/20 hover:bg-purple-500/30 px-2 py-0.5 rounded-md border border-purple-400/30 transition-all shrink-0"
+                            >
+                              نسخ الرابط
+                            </button>
+                          </div>
+
+                          <div className="p-2 bg-blue-950/40 rounded-xl border border-blue-500/20 flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Mail className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                              <span className="text-[10px] text-blue-200 truncate dir-ltr font-mono">
+                                {prj.clientEmail || (prj.hasRegisteredEmail ? 'متسجل ببريد ✓' : 'بدون بريد')}
+                              </span>
+                            </div>
+                            {prj.clientEmail ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(prj.clientEmail!);
+                                  alert('تم نسخ البريد الإلكتروني للديمو!');
+                                }}
+                                className="text-[9px] text-blue-300 hover:text-white bg-blue-500/20 hover:bg-blue-500/30 px-2 py-0.5 rounded-md border border-blue-400/30 transition-all shrink-0"
+                              >
+                                نسخ الإيميل
+                              </button>
+                            ) : prj.hasRegisteredEmail ? (
+                              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-md border border-emerald-500/30 shrink-0">
+                                متسجل ✓
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {prj.description && (
+                          <p className="text-[11px] text-gray-300 leading-relaxed bg-black/30 p-2.5 rounded-xl border border-white/5">
+                            {prj.description}
+                          </p>
+                        )}
+
+                        {/* Action Controls */}
+                        <div className="flex items-center justify-between pt-2.5 border-t border-white/10">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText(prj.id, textContent)}
+                              className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-[11px] font-bold flex items-center gap-1 transition-all"
+                            >
+                              <Copy className="w-3.5 h-3.5 text-purple-300" />
+                              <span>{copiedId === prj.id ? 'تم النسخ!' : 'نسخ الرابط'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleShareWhatsApp(textContent)}
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1 transition-all shadow-md shadow-emerald-600/30"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                              <span>واتساب</span>
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedProjectId(prj.id);
+                                setActiveTab('manage_projects');
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1 transition-all"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>تعديل</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteProjectById(prj.id, prj.title)}
+                              className="p-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-all"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="glass-card p-6 text-center space-y-3 border border-white/5 bg-purple-950/10">
+                  <p className="text-xs text-gray-300">لا توجد روابط ديمو مطابقة للتصفية الحالية.</p>
+                  <div className="flex items-center justify-center gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await onAddProject({
+                            title: 'ديمو تجريبي - سيستم كاشير ومبيعات متكامل',
+                            system: 'محلات',
+                            category: 'سوبر ماركت',
+                            url: 'https://demo-pos.example.com',
+                            clientEmail: 'demo@example.com',
+                            hasRegisteredEmail: true,
+                            description: 'نسخة ديمو تجريبية للجمهور الافتراضي للاختبار والمعاينة المباشرة.',
+                            clientName: 'الجمهور افتراضي',
+                            isDemo: true,
+                            createdAt: new Date().toISOString(),
+                          });
+                          alert('تم إضافة ديمو افتراضي بنجاح!');
+                        } catch (e) {
+                          console.error(e);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md"
+                    >
+                      ⚡ إضافة نموذج ديمو جاهز تلقائياً
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedProjectId('new');
+                        setProjectIsDemo(true);
+                        setProjectClientName('الجمهور افتراضي');
+                        setActiveTab('manage_projects');
+                      }}
+                      className="text-xs font-bold text-purple-300 hover:underline"
+                    >
+                      + كتابة رابط ديمو جديد يدويًا
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1533,30 +2019,93 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
               </div>
             </div>
 
-            {/* Offer Duration */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="text-[11px] text-gray-300 mb-1 block">مدة العرض الرقمية</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={offerDurationValue}
-                  onChange={(e) => setOfferDurationValue(parseInt(e.target.value) || 1)}
-                  className="glass-input w-full p-2.5 text-xs font-bold text-center"
-                />
+            {/* Offer Duration & Presets */}
+            <div className="space-y-2 bg-white/5 p-3 rounded-2xl border border-white/10">
+              <label className="text-[11px] font-bold text-amber-300 block flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-amber-400" /> تحديد مدة العرض / الاشتراك التلقائي
+              </label>
+
+              {/* Quick Presets */}
+              <div className="grid grid-cols-3 gap-1.5 pb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOfferDurationValue(30);
+                    setOfferDurationUnit('أيام');
+                  }}
+                  className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all ${
+                    offerDurationValue === 30 && offerDurationUnit === 'أيام'
+                      ? 'bg-amber-500 text-black border-amber-400'
+                      : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  📅 30 يوم
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOfferDurationValue(1);
+                    setOfferDurationUnit('أشهر');
+                  }}
+                  className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all ${
+                    offerDurationValue === 1 && offerDurationUnit === 'أشهر'
+                      ? 'bg-amber-500 text-black border-amber-400'
+                      : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  🗓️ شهر واحد
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOfferDurationValue(1);
+                    setOfferDurationUnit('سنوات');
+                  }}
+                  className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all ${
+                    offerDurationValue === 1 && offerDurationUnit === 'سنوات'
+                      ? 'bg-amber-500 text-black border-amber-400'
+                      : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  📆 سنة واحدة
+                </button>
               </div>
 
-              <div>
-                <label className="text-[11px] text-gray-300 mb-1 block">وحدة مدة العرض</label>
-                <select
-                  value={offerDurationUnit}
-                  onChange={(e) => setOfferDurationUnit(e.target.value as OfferDurationUnit)}
-                  className="glass-input w-full p-2.5 text-xs"
-                >
-                  <option value="أيام">أيام</option>
-                  <option value="أشهر">أشهر</option>
-                  <option value="سنوات">سنوات</option>
-                </select>
+              {/* Manual Digital Duration Inputs */}
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <div>
+                  <label className="text-[10px] text-gray-400 mb-1 block">المدة الرقمية</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={offerDurationValue}
+                    onChange={(e) => setOfferDurationValue(parseInt(e.target.value) || 1)}
+                    className="glass-input w-full p-2 text-xs font-bold text-center text-amber-300"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-gray-400 mb-1 block">وحدة التجديد والانتهاء</label>
+                  <select
+                    value={offerDurationUnit}
+                    onChange={(e) => setOfferDurationUnit(e.target.value as OfferDurationUnit)}
+                    className="glass-input w-full p-2 text-xs font-bold"
+                  >
+                    <option value="أيام">أيام (تلقائي)</option>
+                    <option value="أشهر">أشهر (اشتراك شهري)</option>
+                    <option value="سنوات">سنوات (اشتراك سنوي)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Duration Auto Summary */}
+              <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-200 font-medium flex items-center justify-between">
+                <span>المدة المحددة للخدمة والاشتراك:</span>
+                <span className="font-black text-amber-300">
+                  {offerDurationValue} {offerDurationUnit}
+                </span>
               </div>
             </div>
 
@@ -1693,10 +2242,10 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
                 onChange={(e) => setSelectedProjectId(e.target.value)}
                 className="glass-input flex-1 p-2.5 text-xs font-semibold"
               >
-                <option value="new">+ إضافة مشروع / نموذج حي جديد للمعرض</option>
+                <option value="new">+ إضافة مشروع / نموذج ديمو حي جديد للمعرض</option>
                 {projects.map((pr) => (
                   <option key={pr.id} value={pr.id}>
-                    🌐 {pr.title} ({pr.system} / {pr.category})
+                    {pr.isDemo ? '🧪 [ديمو - الجمهور افتراضي]' : '🌐 [مشروع حقيقي]'} {pr.title} ({pr.system} / {pr.category})
                   </option>
                 ))}
               </select>
@@ -1726,27 +2275,118 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
             </div>
 
             <div>
-              <label className="text-[11px] text-gray-300 mb-1 block">اسم/عنوان المشروع *</label>
+              <label className="text-[11px] text-gray-300 mb-1 block">اسم/عنوان المشروع أو الديمو *</label>
               <input
                 type="text"
                 placeholder="مثال: نظام كاشير وإدارة سوبر ماركت البركة"
                 value={projectTitle}
                 onChange={(e) => setProjectTitle(e.target.value)}
-                className="glass-input w-full p-2.5 text-xs"
+                className="glass-input w-full p-2.5 text-xs font-semibold"
               />
             </div>
 
-            <div>
-              <label className="text-[11px] text-emerald-300 mb-1 block flex items-center gap-1">
-                <Globe className="w-3.5 h-3.5 text-emerald-400" /> رابط المشروع المباشر (URL) *
-              </label>
-              <input
-                type="text"
-                placeholder="https://albaraka-pos.example.com"
-                value={projectUrl}
-                onChange={(e) => setProjectUrl(e.target.value)}
-                className="glass-input w-full p-2.5 text-xs font-mono text-emerald-300 dir-ltr text-left"
-              />
+            {/* Type classification selector: Real Project vs Demo */}
+            <div className="bg-black/30 p-3 rounded-2xl border border-white/10 space-y-2">
+              <label className="text-[11px] text-gray-200 block font-bold">تصنيف ونوع الرابط:</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectIsDemo(false);
+                    if (projectClientName === 'الجمهور افتراضي') {
+                      setProjectClientName('');
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                    !projectIsDemo
+                      ? 'bg-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-600/30'
+                      : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>🌐 مشروع حي لعميل</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectIsDemo(true);
+                    if (!projectClientName.trim()) {
+                      setProjectClientName('الجمهور افتراضي');
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                    projectIsDemo
+                      ? 'bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-600/30'
+                      : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <FolderKanban className="w-3.5 h-3.5 text-purple-300" />
+                  <span>🧪 ديمو (الجمهور افتراضي)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Primary Project Links & Credentials (URL + Email) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 bg-black/20 p-3.5 rounded-2xl border border-white/10">
+              {/* Project URL Field */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-emerald-300 block flex items-center gap-1 font-semibold">
+                  <Globe className="w-3.5 h-3.5 text-emerald-400" /> رابط المشروع المباشر (URL) *
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://albaraka-pos.example.com"
+                  value={projectUrl}
+                  onChange={(e) => setProjectUrl(e.target.value)}
+                  className="glass-input w-full p-2.5 text-xs font-mono text-emerald-300 dir-ltr text-left"
+                />
+              </div>
+
+              {/* Project Email Field */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-blue-300 block flex items-center gap-1 font-semibold">
+                  <Mail className="w-3.5 h-3.5 text-blue-400" /> البريد الإلكتروني للمشروع / إيميل الحساب
+                </label>
+                <input
+                  type="email"
+                  placeholder="مثال: project-admin@example.com"
+                  value={projectClientEmail}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setProjectClientEmail(val);
+                    if (val.trim().length > 0) {
+                      setProjectHasRegisteredEmail(true);
+                    }
+                  }}
+                  className="glass-input w-full p-2.5 text-xs font-mono text-blue-200 dir-ltr text-left"
+                />
+              </div>
+
+              {/* Email Registration Checkbox Banner */}
+              <div className="md:col-span-2 flex items-center justify-between bg-blue-950/40 p-2.5 rounded-xl border border-blue-500/20 shadow-inner">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-blue-200 select-none font-medium">
+                  <input
+                    type="checkbox"
+                    checked={projectHasRegisteredEmail || !!projectClientEmail.trim()}
+                    onChange={(e) => setProjectHasRegisteredEmail(e.target.checked)}
+                    className="w-4 h-4 rounded border-blue-400 text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
+                  />
+                  <span>تأكيد التسجيل ببريد إلكتروني للحساب</span>
+                </label>
+
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border transition-all ${
+                    projectHasRegisteredEmail || !!projectClientEmail.trim()
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                  }`}
+                >
+                  {projectHasRegisteredEmail || !!projectClientEmail.trim()
+                    ? '✓ متسجل ببريد إلكتروني'
+                    : 'غير متسجل ببريد'}
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
@@ -1787,13 +2427,15 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
             </div>
 
             <div>
-              <label className="text-[11px] text-gray-300 mb-1 block">اسم العميل أو الجهة (اختياري)</label>
+              <label className="text-[11px] text-gray-300 mb-1 block">
+                {projectIsDemo ? 'اسم الجمهور أو الفئة المستهدفة (تلقائي: الجمهور افتراضي)' : 'اسم العميل أو الجهة (اختياري)'}
+              </label>
               <input
                 type="text"
-                placeholder="مثال: محمود أحمد - سوبر ماركت البركة"
+                placeholder={projectIsDemo ? 'الجمهور افتراضي' : 'مثال: محمود أحمد - سوبر ماركت البركة'}
                 value={projectClientName}
                 onChange={(e) => setProjectClientName(e.target.value)}
-                className="glass-input w-full p-2.5 text-xs"
+                className="glass-input w-full p-2.5 text-xs font-medium"
               />
             </div>
 
@@ -1806,6 +2448,210 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
                 onChange={(e) => setProjectDescription(e.target.value)}
                 className="glass-input w-full p-2.5 text-xs"
               />
+            </div>
+
+            {/* Financials, Pricing Model & Payment Milestones */}
+            <div className="bg-black/30 p-3.5 rounded-2xl border border-white/10 space-y-3">
+              <h4 className="text-xs font-bold text-[#FF7A1A] flex items-center gap-1.5">
+                <Tag className="w-4 h-4" /> نظام البيع والدفعات المالية والمرحلية
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="text-[11px] text-gray-300 mb-1 block font-semibold">نظام التسعير / الدفع</label>
+                  <select
+                    value={projectPricingModel}
+                    onChange={(e) => setProjectPricingModel(e.target.value as PricingModel)}
+                    className="glass-input w-full p-2.5 text-xs font-bold text-amber-300"
+                  >
+                    <option value="full_sale">💰 بيع كامل (شراء مباشر)</option>
+                    <option value="monthly_subscription">📅 اشتراك شهري</option>
+                    <option value="yearly_subscription">📆 اشتراك سنوي</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-gray-300 mb-1 block font-semibold">إجمالي قيمة العقد (ج.م)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    value={projectTotalPrice || ''}
+                    onChange={(e) => setProjectTotalPrice(Number(e.target.value) || 0)}
+                    className="glass-input w-full p-2.5 text-xs font-bold text-emerald-300 text-left dir-ltr"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-gray-300 mb-1 block font-semibold">المبلغ المدفوع (مقدم/عربون) (ج.م)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    value={projectPaidAmount || ''}
+                    onChange={(e) => setProjectPaidAmount(Number(e.target.value) || 0)}
+                    className="glass-input w-full p-2.5 text-xs font-bold text-blue-300 text-left dir-ltr"
+                  />
+                </div>
+              </div>
+
+              {/* Status & Debt Banner */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-white/5 border border-white/10 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-gray-400">حالة الدفع الحالية:</span>
+                  <span
+                    className={`font-extrabold px-2.5 py-0.5 rounded-md text-[10px] border ${
+                      projectPaidAmount >= projectTotalPrice && projectTotalPrice > 0
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : projectPaidAmount > 0
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : 'bg-red-500/20 text-red-300 border-red-500/30'
+                    }`}
+                  >
+                    {projectPaidAmount >= projectTotalPrice && projectTotalPrice > 0
+                      ? '✓ دفع كامل'
+                      : projectPaidAmount > 0
+                      ? '⏳ دفع جزئي (عربون)'
+                      : '❌ لم يدفع'}
+                  </span>
+
+                  <span className="text-[11px] text-gray-400 border-r border-white/10 pr-2 mr-2">مرحلة العمل:</span>
+                  <span
+                    className={`font-extrabold px-2.5 py-0.5 rounded-md text-[10px] border ${
+                      projectPaidAmount >= projectTotalPrice && projectTotalPrice > 0
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                    }`}
+                  >
+                    {projectPaidAmount >= projectTotalPrice && projectTotalPrice > 0
+                      ? '🎉 مكتمل ومكتمل التسليم'
+                      : '⚙️ تحت الإنشاء وجاري العمل'}
+                  </span>
+                </div>
+
+                <div className="text-left font-mono">
+                  <span className="text-[10px] text-gray-400">المتبقي الآجل: </span>
+                  <span className="font-extrabold text-red-400">
+                    {Math.max(0, projectTotalPrice - projectPaidAmount).toLocaleString('ar-EG')} ج.م
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Team Members Assignment & Commissions (تكوين وربط الشغل) */}
+            <div className="bg-black/30 p-3.5 rounded-2xl border border-white/10 space-y-3">
+              <h4 className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-blue-400" /> ربط الشغل وفريق العمل (المهندس والميديا مان والنسب)
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Engineer Selector */}
+                <div className="space-y-1.5 bg-white/5 p-2.5 rounded-xl border border-white/5">
+                  <label className="text-[11px] text-gray-300 block font-semibold flex items-center gap-1">
+                    💻 المهندس / المطور المسند له المشروع
+                  </label>
+                  <select
+                    value={projectAssignedEngineerId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setProjectAssignedEngineerId(id);
+                      const member = teamMembers.find((m) => m.id === id);
+                      if (member) {
+                        setProjectAssignedEngineerName(member.name);
+                        setProjectEngineerCommissionRate(member.defaultCommissionRate || 30);
+                      }
+                    }}
+                    className="glass-input w-full p-2 text-xs font-medium"
+                  >
+                    <option value="">-- اختار مهندس من الفريق --</option>
+                    {teamMembers
+                      .filter((m) => m.position === 'engineer' || m.position === 'owner' || m.position === 'custom')
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({POSITION_LABELS[m.position]})
+                        </option>
+                      ))}
+                  </select>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[10px] text-gray-400">نسبة عمولة المهندس %:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={projectEngineerCommissionRate}
+                      onChange={(e) => setProjectEngineerCommissionRate(Number(e.target.value) || 0)}
+                      className="glass-input w-20 p-1 text-xs text-center font-bold text-[#FF7A1A]"
+                    />
+                  </div>
+                </div>
+
+                {/* Media Buyer Selector */}
+                <div className="space-y-1.5 bg-white/5 p-2.5 rounded-xl border border-white/5">
+                  <label className="text-[11px] text-gray-300 block font-semibold flex items-center gap-1">
+                    📢 مسئول التسويق والميديا (Media Buyer)
+                  </label>
+                  <select
+                    value={projectAssignedMediaBuyerId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setProjectAssignedMediaBuyerId(id);
+                      const member = teamMembers.find((m) => m.id === id);
+                      if (member) {
+                        setProjectAssignedMediaBuyerName(member.name);
+                        setProjectMediaBuyerCommissionRate(member.defaultCommissionRate || 20);
+                      }
+                    }}
+                    className="glass-input w-full p-2 text-xs font-medium"
+                  >
+                    <option value="">-- اختار ميديا مان من الفريق --</option>
+                    {teamMembers
+                      .filter((m) => m.position === 'media_buyer' || m.position === 'custom')
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({POSITION_LABELS[m.position]})
+                        </option>
+                      ))}
+                  </select>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[10px] text-gray-400">نسبة عمولة الميديا مان %:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={projectMediaBuyerCommissionRate}
+                      onChange={(e) => setProjectMediaBuyerCommissionRate(Number(e.target.value) || 0)}
+                      className="glass-input w-20 p-1 text-xs text-center font-bold text-amber-300"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Owner Commission & Engineer Mode */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 p-2.5 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-purple-300 font-bold">👑 نسبة صاحب المشروع بالمجمل %:</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={projectOwnerCommissionRate}
+                    onChange={(e) => setProjectOwnerCommissionRate(Number(e.target.value) || 0)}
+                    className="glass-input w-20 p-1 text-xs text-center font-bold text-purple-300"
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer text-purple-200 select-none font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={projectOwnerIsEngineer}
+                    onChange={(e) => setProjectOwnerIsEngineer(e.target.checked)}
+                    className="w-4 h-4 accent-purple-500 rounded"
+                  />
+                  <span>صاحب المشروع يشارك أيضاً كـ مهندس مبرمج</span>
+                </label>
+              </div>
             </div>
 
             {/* Save Project Action */}
@@ -1937,6 +2783,15 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* Protected Developer Delete Confirmation Modal */}
+      <ProtectedDeleteModal
+        isOpen={deleteModalState.isOpen}
+        title={deleteModalState.title}
+        itemDescription={deleteModalState.itemDescription}
+        onConfirmDelete={deleteModalState.onConfirm}
+        onClose={() => setDeleteModalState((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

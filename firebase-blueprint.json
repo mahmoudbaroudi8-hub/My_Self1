@@ -104,9 +104,43 @@
         "url": { "type": "string" },
         "description": { "type": "string" },
         "clientName": { "type": "string" },
+        "clientEmail": { "type": "string" },
+        "hasRegisteredEmail": { "type": "boolean" },
+        "isDemo": { "type": "boolean" },
+        "pricingModel": { "type": "string" },
+        "totalPrice": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "paymentStatus": { "type": "string" },
+        "projectStatus": { "type": "string" },
+        "assignedEngineerId": { "type": "string" },
+        "assignedEngineerName": { "type": "string" },
+        "engineerCommissionRate": { "type": "number" },
+        "assignedMediaBuyerId": { "type": "string" },
+        "assignedMediaBuyerName": { "type": "string" },
+        "mediaBuyerCommissionRate": { "type": "number" },
+        "ownerCommissionRate": { "type": "number" },
+        "ownerIsEngineer": { "type": "boolean" },
         "createdAt": { "type": "string" }
       },
       "required": ["title", "system", "category", "url"]
+    },
+    "team_members": {
+      "title": "Team Members & Permissions",
+      "description": "Team members, roles, permissions, login PINs, and default commission rates",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "position": { "type": "string" },
+        "customPositionTitle": { "type": "string" },
+        "defaultCommissionRate": { "type": "number" },
+        "permissions": { "type": "object" },
+        "pinCode": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "position"]
     }
   }
 }

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Users, Search, Phone, MessageSquare, MapPin, Store, Trash2, Plus, Receipt, FileSpreadsheet } from 'lucide-react';
+import { Users, Search, Phone, MessageSquare, MapPin, Store, Trash2, Plus, Receipt, FileSpreadsheet, FileText } from 'lucide-react';
 import { Client, Sale, ScreenView } from '../types';
 import { exportClientsToExcel } from '../lib/excelExport';
+import { ProtectedDeleteModal } from './ProtectedDeleteModal';
+import { ClientStatementModal } from './ClientStatementModal';
 
 interface ClientsScreenProps {
   clients: Client[];
@@ -18,6 +20,17 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSystemFilter, setSelectedSystemFilter] = useState<string>('الكل');
+  const [statementClient, setStatementClient] = useState<Client | null>(null);
+
+  const [deleteModalState, setDeleteModalState] = useState<{
+    isOpen: boolean;
+    clientId: string;
+    clientName: string;
+  }>({
+    isOpen: false,
+    clientId: '',
+    clientName: '',
+  });
 
   const filteredClients = clients.filter((c) => {
     const matchesSearch =
@@ -165,12 +178,21 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
 
                 {/* Contact Actions */}
                 <div className="flex items-center justify-between pt-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => setStatementClient(client)}
+                      className="px-2.5 py-1 bg-[#FF7A1A]/20 hover:bg-[#FF7A1A]/30 text-[#FF7A1A] border border-[#FF7A1A]/40 rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-all"
+                      title="استخراج وطباعة كشف حساب PDF رسمي للعميل"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>كشف حساب PDF</span>
+                    </button>
+
                     {client.phone && (
                       <>
                         <a
                           href={`tel:${client.phone}`}
-                          className="glass-button px-2.5 py-1 text-[11px] text-emerald-400 flex items-center gap-1 hover:bg-emerald-500/10"
+                          className="glass-button px-2 py-1 text-[11px] text-emerald-400 flex items-center gap-1 hover:bg-emerald-500/10"
                         >
                           <Phone className="w-3 h-3" /> اتصال
                         </a>
@@ -178,7 +200,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
                           href={`https://wa.me/${waNumber}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="glass-button px-2.5 py-1 text-[11px] text-emerald-400 flex items-center gap-1 hover:bg-emerald-500/10"
+                          className="glass-button px-2 py-1 text-[11px] text-emerald-400 flex items-center gap-1 hover:bg-emerald-500/10"
                         >
                           <MessageSquare className="w-3 h-3" /> واتساب
                         </a>
@@ -188,12 +210,14 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
 
                   <button
                     onClick={() => {
-                      if (confirm(`هل أنت تأكد من حذف العميل "${client.shopName}"؟`)) {
-                        onDeleteClient(client.id);
-                      }
+                      setDeleteModalState({
+                        isOpen: true,
+                        clientId: client.id,
+                        clientName: client.shopName || client.name,
+                      });
                     }}
                     className="text-gray-500 hover:text-red-400 p-1"
-                    title="حذف"
+                    title="حذف العميل"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -203,6 +227,23 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
           })
         )}
       </div>
+
+      {/* Statement Modal */}
+      {statementClient && (
+        <ClientStatementModal
+          client={statementClient}
+          sales={sales}
+          onClose={() => setStatementClient(null)}
+        />
+      )}
+
+      <ProtectedDeleteModal
+        isOpen={deleteModalState.isOpen}
+        title="حذف عميل من الدليل"
+        itemDescription={`العميل: "${deleteModalState.clientName}"`}
+        onConfirmDelete={() => onDeleteClient(deleteModalState.clientId)}
+        onClose={() => setDeleteModalState((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };
