@@ -3,6 +3,7 @@ import { X, Printer, Send, ShieldCheck, CheckCircle, FileText, Download, Loader2
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { Sale } from '../types';
+import { shareInvoicePdf } from '../lib/pdfInvoice';
 
 interface CorporateInvoiceModalProps {
   sale: Sale;
@@ -118,6 +119,16 @@ ${sale.projectUrl ? `🌐 *رابط معاينة النظام الخاص بكم:
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Share PDF to WhatsApp */}
+            <button
+              onClick={() => shareInvoicePdf(sale)}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+              title="مشاركة الفاتورة كملف PDF عبر واتساب"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>PDF للواتساب</span>
+            </button>
+
             {/* Direct WhatsApp Share button */}
             <a
               href={whatsappUrl}

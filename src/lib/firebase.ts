@@ -15,7 +15,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import firebaseConfigData from '../../firebase-applet-config.json';
-import { Client, Package, Offer, Sale, Expense, Payment, ProjectItem, TeamMember, SystemType, CategoryType } from '../types';
+import { Client, Package, Offer, Sale, Expense, Payment, ProjectItem, TeamMember, SystemType, CategoryType, Lead } from '../types';
 import { hashText } from './authCrypto';
 
 const firebaseConfig = {
@@ -401,6 +401,38 @@ function sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
     }
   });
   return cleaned as T;
+}
+
+// Lead CRUD
+export async function getLeads(): Promise<Lead[]> {
+  const querySnap = await getDocs(collection(db, 'leads'));
+  return querySnap.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as Lead[];
+}
+
+export async function addLead(lead: Omit<Lead, 'id'>): Promise<string> {
+  const docRef = await addDoc(collection(db, 'leads'), sanitizeForFirestore(lead));
+  return docRef.id;
+}
+
+export async function updateLead(id: string, lead: Partial<Lead>): Promise<void> {
+  await updateDoc(doc(db, 'leads', id), sanitizeForFirestore(lead));
+}
+
+export async function deleteLead(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'leads', id));
+}
+
+export function subscribeLeads(callback: (leads: Lead[]) => void): () => void {
+  return onSnapshot(collection(db, 'leads'), (snapshot) => {
+    const list = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Lead[];
+    callback(list);
+  }, (err) => console.error('Error listening to leads:', err));
 }
 
 // Client CRUD

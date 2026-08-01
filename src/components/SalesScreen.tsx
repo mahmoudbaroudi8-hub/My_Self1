@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Receipt, Search, Filter, Check, Send, Trash2, Eye, Printer, Phone, Calendar, Globe, ExternalLink, Copy, FileSpreadsheet, Edit3 } from 'lucide-react';
 import { Sale, Client, ScreenView } from '../types';
+import { shareInvoicePdf } from '../lib/pdfInvoice';
 import { exportSalesToExcel } from '../lib/excelExport';
 import { CorporateInvoiceModal } from './CorporateInvoiceModal';
 import { ProtectedDeleteModal } from './ProtectedDeleteModal';
@@ -238,6 +239,14 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
                       className="glass-button px-2.5 py-1 text-[11px] text-white flex items-center gap-1 hover:bg-white/10"
                     >
                       <Eye className="w-3.5 h-3.5 text-[#FF7A1A]" /> الفاتورة
+                    </button>
+
+                    <button
+                      onClick={() => shareInvoicePdf(sale)}
+                      className="glass-button px-2.5 py-1 text-[11px] text-emerald-300 flex items-center gap-1 hover:bg-emerald-500/20"
+                      title="إرسال فاتورة PDF عبر الواتساب"
+                    >
+                      <Send className="w-3.5 h-3.5 text-emerald-400" /> PDF واتساب
                     </button>
 
                     {onEditSale && (

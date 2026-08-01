@@ -16,7 +16,8 @@ import {
   Globe
 } from 'lucide-react';
 import { Accordion } from './Accordion';
-import { Client, Package, Offer, Sale, SystemType, CategoryType, DeviceItem, VisitItem, ScreenView, ItemType, getCategoriesForSystem, TeamMember, POSITION_LABELS, EmployeeCommissionItem } from '../types';
+import { Client, Package, Offer, Sale, SystemType, CategoryType, DeviceItem, VisitItem, ScreenView, ItemType, getCategoriesForSystem, TeamMember, POSITION_LABELS, EmployeeCommissionItem, Lead } from '../types';
+import { shareInvoicePdf } from '../lib/pdfInvoice';
 
 interface PosScreenProps {
   clients: Client[];
@@ -24,6 +25,8 @@ interface PosScreenProps {
   offers: Offer[];
   teamMembers?: TeamMember[];
   editingSale?: Sale | null;
+  prefilledLead?: Lead | null;
+  onConfirmLeadDone?: (leadId: string) => Promise<void>;
   onSaveSale: (sale: Omit<Sale, 'id'>) => Promise<void>;
   onUpdateSale?: (id: string, sale: Partial<Sale>) => Promise<void>;
   onCancelEdit?: () => void;
@@ -36,6 +39,8 @@ export const PosScreen: React.FC<PosScreenProps> = ({
   offers,
   teamMembers = [],
   editingSale,
+  prefilledLead,
+  onConfirmLeadDone,
   onSaveSale,
   onUpdateSale,
   onCancelEdit,
@@ -97,6 +102,16 @@ export const PosScreen: React.FC<PosScreenProps> = ({
 
   // Assigned Employees & Commission Rates State
   const [assignedEmployees, setAssignedEmployees] = useState<EmployeeCommissionItem[]>([]);
+
+  // Populating prefilledLead when passed from Leads confirm
+  useEffect(() => {
+    if (prefilledLead) {
+      if (prefilledLead.name) setClientName(prefilledLead.name);
+      if (prefilledLead.phone) setPhone(prefilledLead.phone);
+      if (prefilledLead.system) setSelectedSystem(prefilledLead.system);
+      if (prefilledLead.category) setSelectedCategory(prefilledLead.category);
+    }
+  }, [prefilledLead]);
 
   // Populating editingSale when passed
   useEffect(() => {
@@ -331,6 +346,8 @@ export const PosScreen: React.FC<PosScreenProps> = ({
     );
   };
 
+  const [savedSaleForSharing, setSavedSaleForSharing] = useState<Sale | null>(null);
+
   const handleSubmitSale = async (status: 'mowakad' | 'morsal_qabl_dafa') => {
     if (!shopName.trim() && !clientName.trim()) {
       alert('رجاءً أدخل اسم المحل/الشركة أو اسم العميل على الأقل.');
@@ -377,11 +394,22 @@ export const PosScreen: React.FC<PosScreenProps> = ({
         createdAt: editingSale?.createdAt || new Date().toISOString(),
       };
 
+      let currentSavedSale: Sale;
       if (editingSale && onUpdateSale) {
         await onUpdateSale(editingSale.id, saleData);
+        currentSavedSale = { id: editingSale.id, ...saleData };
       } else {
+        const dummyId = 'sale_' + Date.now();
         await onSaveSale(saleData);
+        currentSavedSale = { id: dummyId, ...saleData };
       }
+
+      setSavedSaleForSharing(currentSavedSale);
+
+      if (prefilledLead && onConfirmLeadDone) {
+        await onConfirmLeadDone(prefilledLead.id);
+      }
+
       setShowSuccessModal(true);
     } catch (err) {
       console.error('Error saving sale:', err);
@@ -1045,6 +1073,20 @@ export const PosScreen: React.FC<PosScreenProps> = ({
             <p className="text-xs text-gray-300">
               تم تسجيل العملية وتحديث الإحصائيات والإيرادات في قاعدة البيانات بنجاح.
             </p>
+
+            {savedSaleForSharing && (
+              <button
+                type="button"
+                onClick={async () => {
+                  await shareInvoicePdf(savedSaleForSharing);
+                }}
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95"
+              >
+                <Send className="w-4 h-4" />
+                <span>إرسال الفاتورة PDF عبر واتساب للعميل</span>
+              </button>
+            )}
+
             <div className="flex gap-2">
               <button
                 onClick={() => {

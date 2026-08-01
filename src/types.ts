@@ -149,6 +149,18 @@ export const POSITION_LABELS: Record<TeamMemberPosition, string> = {
   custom: 'وظيفة مخصصة',
 };
 
+export interface Lead {
+  id: string;
+  name: string;
+  phone: string;
+  notes?: string;
+  system: SystemType;
+  category: CategoryType;
+  assignedEmployeeIds: string[];
+  status: 'محتمل' | 'مؤكد';
+  createdAt: string;
+}
+
 export interface TeamMemberPermissions {
   canManageProjects: boolean;
   canManageSales: boolean;
@@ -156,6 +168,7 @@ export interface TeamMemberPermissions {
   canViewExpenses: boolean;
   canManageTeam: boolean;
   canViewReports: boolean;
+  canConfirmLeads?: boolean;
 }
 
 export interface TeamMember {
@@ -172,6 +185,7 @@ export interface TeamMember {
   defaultCommissionPercent?: number; // Alias for defaultCommissionRate
   permissions: TeamMemberPermissions;
   allowedScreens?: ScreenView[];
+  assignedClientIds?: string[];
   pinCode?: string;
   pinSalt?: string;
   passwordSalt?: string;

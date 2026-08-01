@@ -1,33 +1,49 @@
 import React, { useState } from 'react';
-import { Users, Search, Phone, MessageSquare, MapPin, Store, Trash2, Plus, Receipt, FileSpreadsheet, FileText, CreditCard, Calendar, Edit3, DollarSign, ChevronDown, ChevronUp } from 'lucide-react';
-import { Client, Sale, Payment, ScreenView } from '../types';
+import { Users, Search, Phone, MessageSquare, MapPin, Store, Trash2, Plus, Receipt, FileSpreadsheet, FileText, CreditCard, Calendar, Edit3, DollarSign, ChevronDown, ChevronUp, Target } from 'lucide-react';
+import { Client, Sale, Payment, ScreenView, TeamMember, Lead } from '../types';
 import { exportClientsToExcel } from '../lib/excelExport';
 import { ProtectedDeleteModal } from './ProtectedDeleteModal';
 import { ClientStatementModal } from './ClientStatementModal';
+import { LeadsManager } from './LeadsManager';
 
 interface ClientsScreenProps {
   clients: Client[];
   sales: Sale[];
   payments: Payment[];
+  leads?: Lead[];
+  teamMembers?: TeamMember[];
+  currentUser?: TeamMember | null;
   onDeleteClient: (id: string) => Promise<void>;
   onAddPayment: (payment: Omit<Payment, 'id'>) => Promise<string>;
   onDeletePayment: (id: string) => Promise<void>;
   onEditSale: (sale: Sale) => void;
   onDeleteSale: (id: string) => Promise<void>;
   onNavigate: (screen: ScreenView) => void;
+  onAddLead?: (lead: Omit<Lead, 'id'>) => Promise<string>;
+  onUpdateLead?: (id: string, lead: Partial<Lead>) => Promise<void>;
+  onDeleteLead?: (id: string) => Promise<void>;
+  onConfirmLeadToPos?: (lead: Lead) => void;
 }
 
 export const ClientsScreen: React.FC<ClientsScreenProps> = ({
   clients,
   sales,
   payments,
+  leads = [],
+  teamMembers = [],
+  currentUser,
   onDeleteClient,
   onAddPayment,
   onDeletePayment,
   onEditSale,
   onDeleteSale,
   onNavigate,
+  onAddLead,
+  onUpdateLead,
+  onDeleteLead,
+  onConfirmLeadToPos,
 }) => {
+  const [activeTab, setActiveTab] = useState<'actual' | 'leads'>('actual');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSystemFilter, setSelectedSystemFilter] = useState<string>('الكل');
   const [statementClient, setStatementClient] = useState<Client | null>(null);
@@ -53,7 +69,15 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
     clientName: '',
   });
 
-  const filteredClients = clients.filter((c) => {
+  const isOwner = !currentUser || currentUser.position === 'owner';
+
+  const accessibleClients = clients.filter((c) => {
+    if (isOwner) return true;
+    const assigned = currentUser.assignedClientIds || [];
+    return assigned.includes(c.id);
+  });
+
+  const filteredClients = accessibleClients.filter((c) => {
     const matchesSearch =
       c.shopName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -132,7 +156,11 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
           </div>
           <div>
             <h2 className="text-sm font-bold text-white">إدارة ورعاية العملاء والتحصيلات</h2>
-            <p className="text-[11px] text-gray-300">إجمالي {clients.length} عميل مسجل</p>
+            <p className="text-[11px] text-gray-300">
+              {isOwner
+                ? `إجمالي ${clients.length} عميل مسجل`
+                : `العملاء المسندون إليك: ${accessibleClients.length} من أصل ${clients.length}`}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -153,7 +181,49 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
         </div>
       </div>
 
-      {/* Search & Filter Bar */}
+      {/* Tab Switcher: Confirmed Clients vs Potential Clients (Leads) */}
+      <div className="flex items-center gap-2 bg-[#121C30]/80 p-1.5 rounded-2xl border border-white/10">
+        <button
+          onClick={() => setActiveTab('actual')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+            activeTab === 'actual'
+              ? 'bg-[#FF7A1A] text-white shadow-lg'
+              : 'text-gray-300 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>العملاء الفعليون ({accessibleClients.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('leads')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+            activeTab === 'leads'
+              ? 'bg-[#FF7A1A] text-white shadow-lg'
+              : 'text-gray-300 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <Target className="w-4 h-4" />
+          <span>العملاء المحتملون (Leads)</span>
+          <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/20 text-white font-extrabold">
+            {leads.length}
+          </span>
+        </button>
+      </div>
+
+      {activeTab === 'leads' ? (
+        <LeadsManager
+          leads={leads}
+          teamMembers={teamMembers}
+          currentUser={currentUser}
+          onAddLead={onAddLead || (async () => '')}
+          onUpdateLead={onUpdateLead || (async () => {})}
+          onDeleteLead={onDeleteLead || (async () => {})}
+          onConfirmLeadToPos={onConfirmLeadToPos || (() => {})}
+        />
+      ) : (
+        <>
+          {/* Search & Filter Bar */}
       <div className="space-y-2">
         <div className="relative">
           <Search className="w-4 h-4 text-gray-400 absolute right-3 top-3" />
@@ -499,6 +569,8 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
         onConfirmDelete={() => onDeleteClient(deleteModalState.clientId)}
         onClose={() => setDeleteModalState((prev) => ({ ...prev, isOpen: false }))}
       />
+        </>
+      )}
     </div>
   );
 };

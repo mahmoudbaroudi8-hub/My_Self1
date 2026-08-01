@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Sale, Expense, Payment, Client, SystemType, ScreenView, TeamMember, POSITION_LABELS } from '../types';
 import { EmployeePayrollScreen } from './EmployeePayrollScreen';
+import { isScreenAllowedForUser } from '../lib/permissions';
 
 interface HomeScreenProps {
   sales: Sale[];
@@ -181,28 +182,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
       )}
 
-      {/* Packages & Offers Catalog Quick Shortcut Banner */}
-      <div
-        onClick={() => onNavigate('packages')}
-        className="p-3 bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-[#FF7A1A]/10 border border-amber-500/30 rounded-2xl flex items-center justify-between cursor-pointer hover:border-[#FF7A1A] transition-all group shadow-md"
-      >
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-[#FF7A1A] flex items-center justify-center text-white shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform">
-            <PackageIcon className="w-5 h-5" />
+      {/* Packages & Offers Catalog Quick Shortcut Banner (Only if authorized) */}
+      {isScreenAllowedForUser(currentUser, 'packages') && (
+        <div
+          onClick={() => onNavigate('packages')}
+          className="p-3 bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-[#FF7A1A]/10 border border-amber-500/30 rounded-2xl flex items-center justify-between cursor-pointer hover:border-[#FF7A1A] transition-all group shadow-md"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-[#FF7A1A] flex items-center justify-center text-white shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform">
+              <PackageIcon className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                كتالوج الباقات والعروض
+                <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded-full font-bold">الأسعار والأنظمة</span>
+              </h4>
+              <p className="text-[11px] text-gray-300">تصفح وتعديل خطط الأسعار والأجهزة والعروض الترويجية</p>
+            </div>
           </div>
-          <div>
-            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-              كتالوج الباقات والعروض
-              <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded-full font-bold">الأسعار والأنظمة</span>
-            </h4>
-            <p className="text-[11px] text-gray-300">تصفح وتعديل خطط الأسعار والأجهزة والعروض الترويجية</p>
+          <div className="flex items-center gap-1 text-xs font-bold text-[#FF7A1A]">
+            <span>عرض الكتالوج</span>
+            <ChevronLeft className="w-4 h-4" />
           </div>
         </div>
-        <div className="flex items-center gap-1 text-xs font-bold text-[#FF7A1A]">
-          <span>عرض الكتالوج</span>
-          <ChevronLeft className="w-4 h-4" />
-        </div>
-      </div>
+      )}
 
       {/* 1. Summary Cards (Total Revenue top bar, Expenses & Debts side-by-side) */}
       <div className="space-y-3">
@@ -232,8 +235,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <div className="flex flex-row gap-3 w-full">
           {/* Expenses Card */}
           <div
-            onClick={() => onNavigate('expenses')}
-            className="flex-1 w-1/2 min-w-0 glass-card glass-card-hover p-3.5 cursor-pointer flex flex-col justify-between"
+            onClick={() => {
+              if (isScreenAllowedForUser(currentUser, 'expenses')) {
+                onNavigate('expenses');
+              }
+            }}
+            className={`flex-1 w-1/2 min-w-0 glass-card p-3.5 flex flex-col justify-between ${
+              isScreenAllowedForUser(currentUser, 'expenses') ? 'glass-card-hover cursor-pointer' : 'opacity-80'
+            }`}
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-gray-300 truncate">المصاريف والمشتريات</span>
@@ -251,8 +260,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
           {/* Debts Card */}
           <div
-            onClick={() => onNavigate('sales')}
-            className="flex-1 w-1/2 min-w-0 glass-card glass-card-hover p-3.5 cursor-pointer flex flex-col justify-between"
+            onClick={() => {
+              if (isScreenAllowedForUser(currentUser, 'sales')) {
+                onNavigate('sales');
+              }
+            }}
+            className={`flex-1 w-1/2 min-w-0 glass-card p-3.5 flex flex-col justify-between ${
+              isScreenAllowedForUser(currentUser, 'sales') ? 'glass-card-hover cursor-pointer' : 'opacity-80'
+            }`}
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-gray-300 truncate">إجمالي الديون والآجل</span>

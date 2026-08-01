@@ -38,8 +38,12 @@ import {
   subscribePayments,
   subscribeProjects,
   subscribeTeamMembers,
+  subscribeLeads,
+  addLead,
+  updateLead,
+  deleteLead,
 } from './lib/firebase';
-import { Client, Package, Offer, ProjectItem, Sale, Expense, Payment, TeamMember, SystemType, ScreenView, ALL_SCREENS_CONFIG } from './types';
+import { Client, Package, Offer, ProjectItem, Sale, Expense, Payment, TeamMember, SystemType, ScreenView, ALL_SCREENS_CONFIG, Lead } from './types';
 import { Lock } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
@@ -143,10 +147,14 @@ export default function App() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [currentUser, setCurrentUser] = useState<TeamMember | null>(null);
 
   // Active Sale being edited
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
+
+  // Active Lead being confirmed in POS
+  const [prefilledLead, setPrefilledLead] = useState<Lead | null>(null);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [showBackupModal, setShowBackupModal] = useState<boolean>(false);
@@ -164,6 +172,7 @@ export default function App() {
     let unsubPayments: (() => void) | undefined;
     let unsubProjects: (() => void) | undefined;
     let unsubTeam: (() => void) | undefined;
+    let unsubLeads: (() => void) | undefined;
 
     const setupSubscriptions = async () => {
       try {
@@ -177,6 +186,7 @@ export default function App() {
         unsubExpenses = subscribeExpenses((eList) => setExpenses(eList));
         unsubPayments = subscribePayments((payList) => setPayments(payList));
         unsubProjects = subscribeProjects((prList) => setProjects(prList));
+        unsubLeads = subscribeLeads((lList) => setLeads(lList));
         unsubTeam = subscribeTeamMembers((tList) => {
           setTeamMembers(tList);
           const activeUserId = localStorage.getItem('bm_active_user_id') || sessionStorage.getItem('bm_active_user_id');
@@ -214,6 +224,7 @@ export default function App() {
       if (unsubPayments) unsubPayments();
       if (unsubProjects) unsubProjects();
       if (unsubTeam) unsubTeam();
+      if (unsubLeads) unsubLeads();
     };
   }, [isLoggedIn]);
 
@@ -311,6 +322,29 @@ export default function App() {
 
   const handleDeletePayment = async (id: string) => {
     await deletePayment(id);
+  };
+
+  const handleAddLead = async (leadData: Omit<Lead, 'id'>) => {
+    return await addLead(leadData);
+  };
+
+  const handleUpdateLead = async (id: string, leadData: Partial<Lead>) => {
+    await updateLead(id, leadData);
+  };
+
+  const handleDeleteLead = async (id: string) => {
+    await deleteLead(id);
+  };
+
+  const handleConfirmLeadToPos = (lead: Lead) => {
+    setPrefilledLead(lead);
+    setCurrentScreen('pos');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleConfirmLeadDone = async (leadId: string) => {
+    await updateLead(leadId, { status: 'مؤكد' });
+    setPrefilledLead(null);
   };
 
   // If not logged in, render LoginScreen
@@ -411,6 +445,8 @@ export default function App() {
                       offers={offers}
                       teamMembers={teamMembers}
                       editingSale={editingSale}
+                      prefilledLead={prefilledLead}
+                      onConfirmLeadDone={handleConfirmLeadDone}
                       onSaveSale={handleSaveSale}
                       onUpdateSale={handleUpdateSaleFull}
                       onCancelEdit={() => setEditingSale(null)}
@@ -427,12 +463,19 @@ export default function App() {
                       clients={clients}
                       sales={sales}
                       payments={payments}
+                      leads={leads}
+                      teamMembers={teamMembers}
+                      currentUser={currentUser}
                       onDeleteClient={handleDeleteClient}
                       onAddPayment={handleAddPayment}
                       onDeletePayment={handleDeletePayment}
                       onEditSale={handleEditSale}
                       onDeleteSale={handleDeleteSale}
                       onNavigate={handleNavigate}
+                      onAddLead={handleAddLead}
+                      onUpdateLead={handleUpdateLead}
+                      onDeleteLead={handleDeleteLead}
+                      onConfirmLeadToPos={handleConfirmLeadToPos}
                     />
                   )}
 
@@ -462,6 +505,7 @@ export default function App() {
                     <TeamScreen
                       teamMembers={teamMembers}
                       projects={projects}
+                      clients={clients}
                       currentUser={currentUser}
                       onSwitchUser={(user) => setCurrentUser(user)}
                       onOpenBackup={() => setShowBackupModal(true)}

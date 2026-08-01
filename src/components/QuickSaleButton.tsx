@@ -1,15 +1,17 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
-import { ScreenView } from '../types';
+import { ScreenView, TeamMember } from '../types';
+import { isScreenAllowedForUser } from '../lib/permissions';
 
 interface QuickSaleButtonProps {
   currentScreen: ScreenView;
   onOpenPos: () => void;
+  currentUser?: TeamMember | null;
 }
 
-export const QuickSaleButton: React.FC<QuickSaleButtonProps> = ({ currentScreen, onOpenPos }) => {
-  // Do not render on POS screen itself
-  if (currentScreen === 'pos') {
+export const QuickSaleButton: React.FC<QuickSaleButtonProps> = ({ currentScreen, onOpenPos, currentUser }) => {
+  // Do not render on POS screen itself or if user is not authorized for POS
+  if (currentScreen === 'pos' || !isScreenAllowedForUser(currentUser, 'pos')) {
     return null;
   }
 
