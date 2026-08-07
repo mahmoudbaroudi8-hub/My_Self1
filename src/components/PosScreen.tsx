@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   UserPlus,
   Package as PkgIcon,
@@ -13,14 +13,19 @@ import {
   Store,
   Tag,
   Clock,
-  Globe
+  Globe,
+  AlertTriangle,
 } from 'lucide-react';
 import { Accordion } from './Accordion';
 import { Client, Package, Offer, Sale, SystemType, CategoryType, DeviceItem, VisitItem, ScreenView, ItemType, getCategoriesForSystem, TeamMember, POSITION_LABELS, EmployeeCommissionItem, Lead } from '../types';
 import { shareInvoicePdf } from '../lib/pdfInvoice';
+import { checkPhoneDuplicate } from '../lib/phoneCheck';
+import { DuplicatePhoneAlert } from './DuplicatePhoneAlert';
+import { RecordDetailsModal } from './RecordDetailsModal';
 
 interface PosScreenProps {
   clients: Client[];
+  leads?: Lead[];
   packages: Package[];
   offers: Offer[];
   teamMembers?: TeamMember[];
@@ -29,12 +34,16 @@ interface PosScreenProps {
   onConfirmLeadDone?: (leadId: string) => Promise<void>;
   onSaveSale: (sale: Omit<Sale, 'id'>) => Promise<void>;
   onUpdateSale?: (id: string, sale: Partial<Sale>) => Promise<void>;
+  onAddClient?: (client: Omit<Client, 'id'>) => Promise<string>;
+  onUpdateClient?: (id: string, data: Partial<Client>) => Promise<void>;
+  onUpdateLead?: (id: string, data: Partial<Lead>) => Promise<void>;
   onCancelEdit?: () => void;
   onNavigate: (screen: ScreenView) => void;
 }
 
 export const PosScreen: React.FC<PosScreenProps> = ({
   clients,
+  leads = [],
   packages,
   offers,
   teamMembers = [],
@@ -43,6 +52,9 @@ export const PosScreen: React.FC<PosScreenProps> = ({
   onConfirmLeadDone,
   onSaveSale,
   onUpdateSale,
+  onAddClient,
+  onUpdateClient,
+  onUpdateLead,
   onCancelEdit,
   onNavigate,
 }) => {
@@ -102,6 +114,28 @@ export const PosScreen: React.FC<PosScreenProps> = ({
 
   // Assigned Employees & Commission Rates State
   const [assignedEmployees, setAssignedEmployees] = useState<EmployeeCommissionItem[]>([]);
+  const [isDismissedDuplicate, setIsDismissedDuplicate] = useState(false);
+
+  const [modalRecordState, setModalRecordState] = useState<{
+    isOpen: boolean;
+    type: 'client' | 'lead' | null;
+    record: Client | Lead | null;
+  }>({ isOpen: false, type: null, record: null });
+
+  const phoneDuplicate = useMemo(
+    () => checkPhoneDuplicate(phone, clients, leads, undefined, selectedClientId || undefined),
+    [phone, clients, leads, selectedClientId]
+  );
+
+  const handleSelectClientForPos = (targetClient: Client) => {
+    setSelectedClientId(targetClient.id);
+    setClientName(targetClient.name);
+    setShopName(targetClient.shopName);
+    setPhone(targetClient.phone);
+    if (targetClient.system) setSelectedSystem(targetClient.system);
+    if (targetClient.category) setSelectedCategory(targetClient.category);
+    setIsDismissedDuplicate(true);
+  };
 
   // Populating prefilledLead when passed from Leads confirm
   useEffect(() => {
@@ -348,6 +382,41 @@ export const PosScreen: React.FC<PosScreenProps> = ({
 
   const [savedSaleForSharing, setSavedSaleForSharing] = useState<Sale | null>(null);
 
+  const resetForm = () => {
+    setSelectedClientId('');
+    setClientName('');
+    setShopName('');
+    setPhone('');
+    setProjectUrl('');
+    setDate(today);
+    setDeliveryDate(today);
+    setNextVisitDate('');
+    setItemType('package');
+    setSelectedPackageId('');
+    setPackageName('');
+    setPackagePrice(0);
+    setSelectedOfferId('');
+    setOfferDuration('');
+    setDevices([
+      { name: 'جهاز كاشير لمس متكامل', price: 8500, enabled: false },
+      { name: 'شاشة لمس إضافية للعميل', price: 3500, enabled: false },
+      { name: 'طابعة فواتير حرارية 80mm', price: 1800, enabled: false },
+      { name: 'قارئ باركود ليزري أوتوماتيك', price: 1200, enabled: false },
+      { name: 'درج نقدية حديدي 5 خانات', price: 950, enabled: false },
+      { name: 'طابعة باركود ملصقات حرارية', price: 2800, enabled: false },
+      { name: 'طقم ماوس وكيبورد لاسلكي', price: 450, enabled: false },
+    ]);
+    setVisits([
+      { type: 'زيارة تركيب وتدريب الموقع', price: 500, enabled: false },
+      { type: 'زيارة دعم فني ومتابعة ميدانية', price: 300, enabled: false },
+      { type: 'زيارة صيانة وبرمجة الأجهزة', price: 400, enabled: false },
+    ]);
+    setDiscount(0);
+    setPaidAmount(0);
+    setAssignedEmployees([]);
+    setIsDismissedDuplicate(false);
+  };
+
   const handleSubmitSale = async (status: 'mowakad' | 'morsal_qabl_dafa') => {
     if (!shopName.trim() && !clientName.trim()) {
       alert('رجاءً أدخل اسم المحل/الشركة أو اسم العميل على الأقل.');
@@ -356,13 +425,36 @@ export const PosScreen: React.FC<PosScreenProps> = ({
 
     setIsSubmitting(true);
     try {
+      // Check or create client ID if not manually selected
+      let effectiveClientId = selectedClientId || undefined;
+
+      if (!effectiveClientId) {
+        // First check if phone exists in existing clients list
+        if (phoneDuplicate.isDuplicate && phoneDuplicate.matchType === 'client' && phoneDuplicate.matchedId) {
+          effectiveClientId = phoneDuplicate.matchedId;
+        } else if (onAddClient && (clientName.trim() || shopName.trim())) {
+          // Auto-create new client in `clients` database
+          const newClientId = await onAddClient({
+            name: clientName.trim() || shopName.trim(),
+            shopName: shopName.trim() || clientName.trim(),
+            phone: phone.trim(),
+            system: selectedSystem,
+            category: selectedCategory,
+            address: '',
+          });
+          if (newClientId) {
+            effectiveClientId = newClientId;
+          }
+        }
+      }
+
       const finalEmployeeCommissions = assignedEmployees.map((item) => ({
         ...item,
         commissionAmount: (finalInvoice * (Number(item.commissionPercent) || 0)) / 100,
       }));
 
       const saleData: Omit<Sale, 'id'> = {
-        clientId: selectedClientId || undefined,
+        clientId: effectiveClientId,
         clientName: clientName || shopName,
         shopName: shopName || clientName,
         phone: phone || '',
@@ -410,10 +502,13 @@ export const PosScreen: React.FC<PosScreenProps> = ({
         await onConfirmLeadDone(prefilledLead.id);
       }
 
+      // Reset form fields so the POS screen is clean
+      resetForm();
+
       setShowSuccessModal(true);
     } catch (err) {
       console.error('Error saving sale:', err);
-      alert('حدث خطأ أثناء حفظ العملية. حاول مرة أخرى.');
+      alert('حدث خطأ أثناء حفظ عملية البيع. يرجى التأكد من الاتصال بالشبكة والمحاولة مرة أخرى.');
     } finally {
       setIsSubmitting(false);
     }
@@ -548,16 +643,34 @@ export const PosScreen: React.FC<PosScreenProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div>
             <label className="text-[11px] text-gray-300 mb-1 block">رقم الموبايل</label>
             <input
               type="tel"
               placeholder="01XXXXXXXXX"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setIsDismissedDuplicate(false);
+              }}
               className="glass-input w-full p-2.5 text-xs text-left"
               dir="ltr"
+            />
+            <DuplicatePhoneAlert
+              phoneDuplicate={phoneDuplicate}
+              clients={clients}
+              leads={leads}
+              isDismissed={isDismissedDuplicate}
+              onContinueAnyway={() => setIsDismissedDuplicate(true)}
+              onSelectClientForPos={handleSelectClientForPos}
+              onViewEditRecord={(type, rec) => {
+                setModalRecordState({
+                  isOpen: true,
+                  type,
+                  record: rec,
+                });
+              }}
             />
           </div>
 
@@ -1110,6 +1223,17 @@ export const PosScreen: React.FC<PosScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* Record Details Modal */}
+      <RecordDetailsModal
+        isOpen={modalRecordState.isOpen}
+        recordType={modalRecordState.type}
+        record={modalRecordState.record}
+        onClose={() => setModalRecordState({ isOpen: false, type: null, record: null })}
+        onUpdateClient={onUpdateClient}
+        onUpdateLead={onUpdateLead}
+        onSelectClientForPos={handleSelectClientForPos}
+      />
     </div>
   );
 };

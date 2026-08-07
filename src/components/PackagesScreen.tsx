@@ -51,7 +51,8 @@ import {
   PRICING_MODEL_LABELS,
   PAYMENT_STATUS_LABELS,
   WORK_STATUS_LABELS,
-  getCategoriesForSystem
+  getCategoriesForSystem,
+  ScreenView,
 } from '../types';
 
 const HorizontalSwipeContainer: React.FC<{
@@ -115,6 +116,7 @@ interface PackagesScreenProps {
   installPrompt: any;
   onInstallApp: () => void;
   isAppInstalled: boolean;
+  onNavigate?: (screen: ScreenView) => void;
 }
 
 export const PackagesScreen: React.FC<PackagesScreenProps> = ({
@@ -135,6 +137,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   installPrompt,
   onInstallApp,
   isAppInstalled,
+  onNavigate,
 }) => {
   // Main settings menu tabs
   const [activeTab, setActiveTab] = useState<
@@ -732,18 +735,30 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   });
 
   return (
-    <div className="space-y-4 pb-28 pt-2">
+    <div className="space-y-4 pb-56 pt-2">
       {/* Header */}
-      <div className="glass-card p-4 flex items-center justify-between border-b-2 border-b-[#FF7A1A]">
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-[#FF7A1A]/15 text-[#FF7A1A] flex items-center justify-center shadow-lg shadow-[#FF7A1A]/10">
+      <div className="glass-card p-4 flex items-center justify-between gap-3 border-b-2 border-b-[#FF7A1A]">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-[#FF7A1A]/15 text-[#FF7A1A] flex items-center justify-center shadow-lg shadow-[#FF7A1A]/10 shrink-0">
             <PkgIcon className="w-5 h-5" />
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-white">إعدادات الباقات، العروض ومعرض المشاريع</h2>
-            <p className="text-[11px] text-gray-300">إدارة مخصصة للباقات الأساسية، العروض المحدودة، ومعرض النماذج الحية</p>
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-white truncate">إعدادات الباقات، العروض ومعرض المشاريع</h2>
+            <p className="text-[11px] text-gray-300 truncate">إدارة مخصصة للباقات الأساسية، العروض المحدودة، ومعرض النماذج الحية</p>
           </div>
         </div>
+
+        {onNavigate && (
+          <button
+            type="button"
+            onClick={() => onNavigate('home')}
+            aria-label="إغلاق الإعدادات"
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 transition-colors shrink-0 active:scale-95 cursor-pointer"
+            title="إغلاق شاشة الإعدادات والعودة للشاشة الرئيسية"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Main Navigation Tabs */}
@@ -2792,6 +2807,9 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
         onConfirmDelete={deleteModalState.onConfirm}
         onClose={() => setDeleteModalState((prev) => ({ ...prev, isOpen: false }))}
       />
+
+      {/* 2cm Empty Padding/Spacer at the bottom of Settings screen */}
+      <div style={{ height: '2cm' }} className="w-full shrink-0 pointer-events-none" aria-hidden="true" />
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, ShoppingBag, Home, Users, Receipt } from 'lucide-react';
+import { BarChart3, ShoppingBag, Home, Users, Receipt, Target } from 'lucide-react';
 import { ScreenView, TeamMember } from '../types';
 import { isScreenAllowedForUser } from '../lib/permissions';
 
@@ -14,6 +14,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentScreen, onNavigate,
 
   const showSales = isAllowed('sales');
   const showClients = isAllowed('clients');
+  const showLeads = isAllowed('leads');
   const showHome = isAllowed('home');
   const showExpenses = isAllowed('expenses');
   const showReports = isAllowed('reports');
@@ -34,18 +35,28 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentScreen, onNavigate,
           </button>
         )}
 
-        {/* 2. العملاء (Clients) */}
-        {showClients && (
+        {/* 2. العملاء (Clients) or Leads */}
+        {showClients ? (
           <button
             onClick={() => onNavigate('clients')}
             className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
-              currentScreen === 'clients' ? 'text-[#FF7A1A] font-bold scale-105' : 'text-gray-400 hover:text-gray-200'
+              currentScreen === 'clients' || currentScreen === 'leads' ? 'text-[#FF7A1A] font-bold scale-105' : 'text-gray-400 hover:text-gray-200'
             }`}
           >
             <Users className="w-5 h-5" />
             <span className="text-[10px] font-medium mt-1">العملاء</span>
           </button>
-        )}
+        ) : showLeads ? (
+          <button
+            onClick={() => onNavigate('leads')}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
+              currentScreen === 'leads' ? 'text-[#FF7A1A] font-bold scale-105' : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <Target className="w-5 h-5" />
+            <span className="text-[10px] font-medium mt-1">العملاء المحتملون</span>
+          </button>
+        ) : null}
 
         {/* 3. الرئيسية (Home) */}
         {showHome && (

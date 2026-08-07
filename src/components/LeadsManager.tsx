@@ -1,24 +1,31 @@
-import React, { useState } from 'react';
-import { Target, Search, Plus, Phone, MessageSquare, Edit3, Trash2, CheckCircle2, UserCheck, Clock, ShieldCheck, Tag, FileText } from 'lucide-react';
-import { Lead, TeamMember, SystemType, CategoryType, getCategoriesForSystem, SYSTEM_CATEGORIES_MAP } from '../types';
+import React, { useState, useMemo } from 'react';
+import { Target, Search, Plus, Phone, MessageSquare, Edit3, Trash2, CheckCircle2, UserCheck, Clock, ShieldCheck, Tag, FileText, AlertTriangle } from 'lucide-react';
+import { Lead, Client, TeamMember, SystemType, CategoryType, getCategoriesForSystem, SYSTEM_CATEGORIES_MAP } from '../types';
 import { ProtectedDeleteModal } from './ProtectedDeleteModal';
+import { checkPhoneDuplicate } from '../lib/phoneCheck';
+import { DuplicatePhoneAlert } from './DuplicatePhoneAlert';
+import { RecordDetailsModal } from './RecordDetailsModal';
 
 interface LeadsManagerProps {
   leads: Lead[];
+  clients?: Client[];
   teamMembers: TeamMember[];
   currentUser?: TeamMember | null;
   onAddLead: (lead: Omit<Lead, 'id'>) => Promise<string>;
   onUpdateLead: (id: string, lead: Partial<Lead>) => Promise<void>;
+  onUpdateClient?: (id: string, client: Partial<Client>) => Promise<void>;
   onDeleteLead: (id: string) => Promise<void>;
   onConfirmLeadToPos: (lead: Lead) => void;
 }
 
 export const LeadsManager: React.FC<LeadsManagerProps> = ({
   leads,
+  clients = [],
   teamMembers,
   currentUser,
   onAddLead,
   onUpdateLead,
+  onUpdateClient,
   onDeleteLead,
   onConfirmLeadToPos,
 }) => {
@@ -36,6 +43,13 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('سوبر ماركت');
   const [assignedEmployeeIds, setAssignedEmployeeIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDismissedDuplicate, setIsDismissedDuplicate] = useState(false);
+
+  const [modalRecordState, setModalRecordState] = useState<{
+    isOpen: boolean;
+    type: 'client' | 'lead' | null;
+    record: Client | Lead | null;
+  }>({ isOpen: false, type: null, record: null });
 
   // Delete Modal State
   const [deleteModalState, setDeleteModalState] = useState<{
@@ -49,6 +63,10 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
   });
 
   const isOwner = !currentUser || currentUser.position === 'owner';
+  const phoneDuplicate = useMemo(
+    () => checkPhoneDuplicate(phone, clients, leads, editingLeadId || undefined),
+    [phone, clients, leads, editingLeadId]
+  );
   const canConfirmLeads = isOwner || Boolean(currentUser?.permissions?.canConfirmLeads);
 
   // Visibility Filter: Owner sees all; staff sees assigned leads
@@ -167,15 +185,13 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
           </div>
         </div>
 
-        {(isOwner || canConfirmLeads) && (
-          <button
-            onClick={handleOpenAddModal}
-            className="btn-orange px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg active:scale-95 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة عميل محتمل جديد</span>
-          </button>
-        )}
+        <button
+          onClick={handleOpenAddModal}
+          className="btn-orange px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg active:scale-95 transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          <span>إضافة عميل محتمل جديد</span>
+        </button>
       </div>
 
       {/* Search & Filter Bar */}
@@ -335,27 +351,46 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
                 )}
 
                 {/* Bottom Action Row */}
-                <div className="flex items-center justify-between pt-2 border-t border-white/10 gap-2">
-                  {/* Confirm Lead Button */}
-                  {!isConfirmed && canConfirmLeads ? (
-                    <button
-                      onClick={() => onConfirmLeadToPos(lead)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>تأكيد العميل وتحويله لمبيعات (POS)</span>
-                    </button>
-                  ) : (
-                    <span className="text-[11px] text-gray-400 font-semibold">
-                      {isConfirmed ? 'تم تأكيد هذا العميل بنجاح' : 'في انتظار التأكيد'}
-                    </span>
-                  )}
+                <div className="flex flex-wrap items-center justify-between pt-2.5 border-t border-white/10 gap-2">
+                  {/* Primary Actions */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {!isConfirmed && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdateLead(lead.id, { status: 'مؤكد' })}
+                        className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                        title="تحديث الحالة إلى مؤكد فورًا"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>مؤكد</span>
+                      </button>
+                    )}
 
-                  <div className="flex items-center gap-1">
+                    {!isConfirmed && canConfirmLeads ? (
+                      <button
+                        type="button"
+                        onClick={() => onConfirmLeadToPos(lead)}
+                        className="px-3 py-1.5 bg-gradient-to-r from-[#FF7A1A] to-orange-600 hover:from-orange-500 hover:to-orange-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                        title="تحويل العميل المحتمل إلى عميل فعلي وفتح نقطة البيع (POS)"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>تحويل لعميل فعلي / تسجيل بيع</span>
+                      </button>
+                    ) : isConfirmed ? (
+                      <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>تم تأكيد هذا العميل بنجاح</span>
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Secondary Actions (Edit & Delete) */}
+                  <div className="flex items-center gap-1 shrink-0">
                     {isOwner && (
                       <button
+                        type="button"
                         onClick={() => handleOpenEditModal(lead)}
-                        className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+                        className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors cursor-pointer"
                         title="تعديل العميل المحتمل"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
@@ -364,6 +399,7 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
 
                     {isOwner && (
                       <button
+                        type="button"
                         onClick={() =>
                           setDeleteModalState({
                             isOpen: true,
@@ -371,7 +407,7 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
                             leadName: lead.name,
                           })
                         }
-                        className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/30 text-red-400 transition-colors"
+                        className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/30 text-red-400 transition-colors cursor-pointer"
                         title="حذف العميل المحتمل"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -421,8 +457,25 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
                     type="text"
                     placeholder="مثال: 01012345678"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      setIsDismissedDuplicate(false);
+                    }}
                     className="glass-input w-full p-2.5 text-xs font-bold dir-ltr"
+                  />
+                  <DuplicatePhoneAlert
+                    phoneDuplicate={phoneDuplicate}
+                    clients={clients}
+                    leads={leads}
+                    isDismissed={isDismissedDuplicate}
+                    onContinueAnyway={() => setIsDismissedDuplicate(true)}
+                    onViewEditRecord={(type, rec) => {
+                      setModalRecordState({
+                        isOpen: true,
+                        type,
+                        record: rec,
+                      });
+                    }}
                   />
                 </div>
               </div>
@@ -532,6 +585,16 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
         itemDescription={`العميل المحتمل: "${deleteModalState.leadName}"`}
         onConfirmDelete={() => onDeleteLead(deleteModalState.leadId)}
         onClose={() => setDeleteModalState((prev) => ({ ...prev, isOpen: false }))}
+      />
+
+      {/* Record Details Modal */}
+      <RecordDetailsModal
+        isOpen={modalRecordState.isOpen}
+        recordType={modalRecordState.type}
+        record={modalRecordState.record}
+        onClose={() => setModalRecordState({ isOpen: false, type: null, record: null })}
+        onUpdateClient={onUpdateClient}
+        onUpdateLead={onUpdateLead}
       />
     </div>
   );

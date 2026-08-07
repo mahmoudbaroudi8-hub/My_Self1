@@ -4,18 +4,20 @@ export const isScreenAllowedForUser = (
   currentUser: TeamMember | null | undefined,
   screen: ScreenView
 ): boolean => {
-  // If no logged in user context or user is owner, allow everything
-  if (!currentUser) return true;
+  // If no user object, disallow protected screens
+  if (!currentUser) return false;
+
+  // Owner has full disallow/allow bypass (full access)
   if (currentUser.position === 'owner') return true;
 
   // If allowedScreens array is explicitly specified on the member
-  if (Array.isArray(currentUser.allowedScreens) && currentUser.allowedScreens.length > 0) {
+  if (Array.isArray(currentUser.allowedScreens)) {
     return currentUser.allowedScreens.includes(screen);
   }
 
   // Fallback to permissions object if allowedScreens array is missing
   const p = currentUser.permissions;
-  if (!p) return true;
+  if (!p) return screen === 'home';
 
   switch (screen) {
     case 'pos':
@@ -29,10 +31,13 @@ export const isScreenAllowedForUser = (
       return Boolean(p.canManagePackages);
     case 'team':
       return Boolean(p.canManageTeam);
+    case 'clients':
+      return Boolean(p.canManageClients);
+    case 'leads':
+      return Boolean(p.canConfirmLeads || p.canManageClients);
+    case 'add-client':
     case 'home':
     case 'sector':
-    case 'clients':
-    case 'add-client':
     default:
       return true;
   }
@@ -44,6 +49,7 @@ export const getFirstAllowedScreen = (
   const priorityScreens: ScreenView[] = [
     'home',
     'clients',
+    'leads',
     'sales',
     'pos',
     'packages',

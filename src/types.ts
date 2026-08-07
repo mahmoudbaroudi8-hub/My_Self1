@@ -168,6 +168,7 @@ export interface TeamMemberPermissions {
   canViewExpenses: boolean;
   canManageTeam: boolean;
   canViewReports: boolean;
+  canManageClients?: boolean;
   canConfirmLeads?: boolean;
 }
 
@@ -254,6 +255,7 @@ export type ScreenView =
   | 'pos'
   | 'add-client'
   | 'clients'
+  | 'leads'
   | 'packages'
   | 'sector'
   | 'sales'
@@ -266,6 +268,7 @@ export const ALL_SCREENS_CONFIG: { id: ScreenView; label: string; iconName: stri
   { id: 'pos', label: 'نقطة البيع (الكاشير)', iconName: 'Monitor' },
   { id: 'sales', label: 'المبيعات والمعاينات', iconName: 'Receipt' },
   { id: 'clients', label: 'العملاء والديون', iconName: 'Users' },
+  { id: 'leads', label: 'العملاء المحتملون (Leads)', iconName: 'Target' },
   { id: 'packages', label: 'الباقات والعروض', iconName: 'Settings' },
   { id: 'sector', label: 'القطاعات والأنشطة', iconName: 'LayoutGrid' },
   { id: 'expenses', label: 'المصروفات والخزينة', iconName: 'ShoppingBag' },

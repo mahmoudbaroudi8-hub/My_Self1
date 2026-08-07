@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Search, Phone, MessageSquare, MapPin, Store, Trash2, Plus, Receipt, FileSpreadsheet, FileText, CreditCard, Calendar, Edit3, DollarSign, ChevronDown, ChevronUp, Target } from 'lucide-react';
 import { Client, Sale, Payment, ScreenView, TeamMember, Lead } from '../types';
 import { exportClientsToExcel } from '../lib/excelExport';
 import { ProtectedDeleteModal } from './ProtectedDeleteModal';
 import { ClientStatementModal } from './ClientStatementModal';
 import { LeadsManager } from './LeadsManager';
+import { isScreenAllowedForUser } from '../lib/permissions';
 
 interface ClientsScreenProps {
   clients: Client[];
@@ -13,7 +14,9 @@ interface ClientsScreenProps {
   leads?: Lead[];
   teamMembers?: TeamMember[];
   currentUser?: TeamMember | null;
+  initialScreen?: ScreenView;
   onDeleteClient: (id: string) => Promise<void>;
+  onUpdateClient?: (id: string, data: Partial<Client>) => Promise<void>;
   onAddPayment: (payment: Omit<Payment, 'id'>) => Promise<string>;
   onDeletePayment: (id: string) => Promise<void>;
   onEditSale: (sale: Sale) => void;
@@ -32,7 +35,9 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
   leads = [],
   teamMembers = [],
   currentUser,
+  initialScreen = 'clients',
   onDeleteClient,
+  onUpdateClient,
   onAddPayment,
   onDeletePayment,
   onEditSale,
@@ -43,7 +48,29 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
   onDeleteLead,
   onConfirmLeadToPos,
 }) => {
-  const [activeTab, setActiveTab] = useState<'actual' | 'leads'>('actual');
+  const canViewClients = isScreenAllowedForUser(currentUser, 'clients');
+  const canViewLeads = isScreenAllowedForUser(currentUser, 'leads');
+
+  const getInitialTab = (): 'actual' | 'leads' => {
+    if (initialScreen === 'leads' && canViewLeads) return 'leads';
+    if (canViewClients) return 'actual';
+    if (canViewLeads) return 'leads';
+    return 'actual';
+  };
+
+  const [activeTab, setActiveTab] = useState<'actual' | 'leads'>(getInitialTab);
+
+  useEffect(() => {
+    if (initialScreen === 'leads' && canViewLeads) {
+      setActiveTab('leads');
+    } else if (initialScreen === 'clients' && canViewClients) {
+      setActiveTab('actual');
+    } else if (!canViewClients && canViewLeads) {
+      setActiveTab('leads');
+    } else if (canViewClients && !canViewLeads) {
+      setActiveTab('actual');
+    }
+  }, [initialScreen, canViewClients, canViewLeads]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSystemFilter, setSelectedSystemFilter] = useState<string>('الكل');
   const [statementClient, setStatementClient] = useState<Client | null>(null);
@@ -152,72 +179,84 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
       <div className="glass-card p-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-10 h-10 rounded-xl bg-[#FF7A1A]/15 text-[#FF7A1A] flex items-center justify-center">
-            <Users className="w-5 h-5" />
+            {activeTab === 'leads' ? <Target className="w-5 h-5" /> : <Users className="w-5 h-5" />}
           </div>
           <div>
-            <h2 className="text-sm font-bold text-white">إدارة ورعاية العملاء والتحصيلات</h2>
+            <h2 className="text-sm font-bold text-white">
+              {activeTab === 'leads' ? 'إدارة ومتابعة العملاء المحتملين (Leads)' : 'إدارة ورعاية العملاء والتحصيلات'}
+            </h2>
             <p className="text-[11px] text-gray-300">
-              {isOwner
+              {activeTab === 'leads'
+                ? `إجمالي ${leads.length} عميل محتمل مسجل`
+                : isOwner
                 ? `إجمالي ${clients.length} عميل مسجل`
                 : `العملاء المسندون إليك: ${accessibleClients.length} من أصل ${clients.length}`}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => exportClientsToExcel(clients, sales)}
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95"
-            title="تصدير دليل العملاء إلى Excel"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span className="hidden sm:inline">تصدير Excel</span>
-          </button>
-          <button
-            onClick={() => onNavigate('add-client')}
-            className="btn-orange px-3 py-1.5 text-xs font-bold flex items-center gap-1 shadow-md"
-          >
-            <Plus className="w-4 h-4" /> إضافة عميل
-          </button>
+          {activeTab === 'actual' && canViewClients && (
+            <>
+              <button
+                onClick={() => exportClientsToExcel(clients, sales)}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+                title="تصدير دليل العملاء إلى Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span className="hidden sm:inline">تصدير Excel</span>
+              </button>
+              <button
+                onClick={() => onNavigate('add-client')}
+                className="btn-orange px-3 py-1.5 text-xs font-bold flex items-center gap-1 shadow-md"
+              >
+                <Plus className="w-4 h-4" /> إضافة عميل
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Tab Switcher: Confirmed Clients vs Potential Clients (Leads) */}
-      <div className="flex items-center gap-2 bg-[#121C30]/80 p-1.5 rounded-2xl border border-white/10">
-        <button
-          onClick={() => setActiveTab('actual')}
-          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-            activeTab === 'actual'
-              ? 'bg-[#FF7A1A] text-white shadow-lg'
-              : 'text-gray-300 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>العملاء الفعليون ({accessibleClients.length})</span>
-        </button>
+      {/* Tab Switcher: Only render if user has permissions for BOTH actual clients and leads */}
+      {canViewClients && canViewLeads && (
+        <div className="flex items-center gap-2 bg-[#121C30]/80 p-1.5 rounded-2xl border border-white/10">
+          <button
+            onClick={() => setActiveTab('actual')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+              activeTab === 'actual'
+                ? 'bg-[#FF7A1A] text-white shadow-lg'
+                : 'text-gray-300 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>العملاء الفعليون ({accessibleClients.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('leads')}
-          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-            activeTab === 'leads'
-              ? 'bg-[#FF7A1A] text-white shadow-lg'
-              : 'text-gray-300 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          <Target className="w-4 h-4" />
-          <span>العملاء المحتملون (Leads)</span>
-          <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/20 text-white font-extrabold">
-            {leads.length}
-          </span>
-        </button>
-      </div>
+          <button
+            onClick={() => setActiveTab('leads')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+              activeTab === 'leads'
+                ? 'bg-[#FF7A1A] text-white shadow-lg'
+                : 'text-gray-300 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Target className="w-4 h-4" />
+            <span>العملاء المحتملون (Leads)</span>
+            <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/20 text-white font-extrabold">
+              {leads.length}
+            </span>
+          </button>
+        </div>
+      )}
 
       {activeTab === 'leads' ? (
         <LeadsManager
           leads={leads}
+          clients={clients}
           teamMembers={teamMembers}
           currentUser={currentUser}
           onAddLead={onAddLead || (async () => '')}
           onUpdateLead={onUpdateLead || (async () => {})}
+          onUpdateClient={onUpdateClient}
           onDeleteLead={onDeleteLead || (async () => {})}
           onConfirmLeadToPos={onConfirmLeadToPos || (() => {})}
         />

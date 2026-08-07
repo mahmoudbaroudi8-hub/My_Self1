@@ -42,8 +42,10 @@ import {
   addLead,
   updateLead,
   deleteLead,
+  updateClient,
 } from './lib/firebase';
 import { Client, Package, Offer, ProjectItem, Sale, Expense, Payment, TeamMember, SystemType, ScreenView, ALL_SCREENS_CONFIG, Lead } from './types';
+import { isScreenAllowedForUser, getFirstAllowedScreen } from './lib/permissions';
 import { Lock } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
@@ -135,7 +137,26 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem('bm_is_logged_in');
     sessionStorage.removeItem('bm_is_logged_in');
+    localStorage.removeItem('bm_active_user_id');
+    sessionStorage.removeItem('bm_active_user_id');
+    localStorage.removeItem('bm_username');
+    setCurrentUser(null);
     setIsLoggedIn(false);
+    setCurrentScreen('home');
+  };
+
+  const handleSwitchUser = (user: TeamMember) => {
+    setCurrentUser(user);
+    const activeUserId = user.id;
+    if (localStorage.getItem('bm_is_logged_in') === 'true') {
+      localStorage.setItem('bm_active_user_id', activeUserId);
+      sessionStorage.removeItem('bm_active_user_id');
+    } else {
+      sessionStorage.setItem('bm_active_user_id', activeUserId);
+      localStorage.removeItem('bm_active_user_id');
+    }
+    const allowed = getFirstAllowedScreen(user);
+    setCurrentScreen(allowed);
   };
 
   // Firestore Data State
@@ -160,7 +181,91 @@ export default function App() {
   const [showBackupModal, setShowBackupModal] = useState<boolean>(false);
   const [showPwaModal, setShowPwaModal] = useState<boolean>(false);
 
-  // Setup Real-time Listeners (onSnapshot)
+  // 1. Always subscribe to team members in real-time so LoginScreen & auth state are up-to-date
+  useEffect(() => {
+    let unsubTeam: (() => void) | undefined;
+    const initTeam = async () => {
+      try {
+        await seedInitialDataIfEmpty();
+        unsubTeam = subscribeTeamMembers((tList) => {
+          setTeamMembers(tList);
+        });
+      } catch (err) {
+        console.error('Error fetching team members:', err);
+      }
+    };
+    initTeam();
+    return () => {
+      if (unsubTeam) unsubTeam();
+    };
+  }, []);
+
+  // 2. Synchronize currentUser with activeUserId and teamMembers list
+  useEffect(() => {
+    if (!isLoggedIn) {
+      if (currentUser !== null) {
+        setCurrentUser(null);
+      }
+      return;
+    }
+
+    const activeUserId =
+      localStorage.getItem('bm_active_user_id') || sessionStorage.getItem('bm_active_user_id');
+
+    if (!activeUserId) {
+      handleLogout();
+      return;
+    }
+
+    let found = teamMembers.find((m) => m.id === activeUserId);
+    if (!found && activeUserId === 'owner-default') {
+      found = teamMembers.find((m) => m.position === 'owner') || {
+        id: 'owner-default',
+        name: 'صاحب المشروع (البارودي)',
+        email: 'admin@system.local',
+        phone: '01000000000',
+        username: 'admin',
+        position: 'owner',
+        defaultCommissionRate: 10,
+        isActive: true,
+        allowedScreens: [
+          'home',
+          'pos',
+          'add-client',
+          'clients',
+          'packages',
+          'sector',
+          'sales',
+          'expenses',
+          'reports',
+          'team',
+        ],
+        permissions: {
+          canManageProjects: true,
+          canManageSales: true,
+          canManagePackages: true,
+          canViewExpenses: true,
+          canManageTeam: true,
+          canViewReports: true,
+          canConfirmLeads: true,
+        },
+      };
+    }
+
+    if (found) {
+      if (found.isActive === false) {
+        alert('تم تعطيل هذا الحساب من قبل صاحب المشروع.');
+        handleLogout();
+        return;
+      }
+      setCurrentUser(found);
+    } else if (teamMembers.length > 0) {
+      // User ID no longer exists in database -> account removed -> logout
+      handleLogout();
+    }
+  }, [isLoggedIn, teamMembers]);
+
+  // 3. Setup remaining Real-time Listeners (clients, packages, sales, etc.) when logged in
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -171,14 +276,11 @@ export default function App() {
     let unsubExpenses: (() => void) | undefined;
     let unsubPayments: (() => void) | undefined;
     let unsubProjects: (() => void) | undefined;
-    let unsubTeam: (() => void) | undefined;
     let unsubLeads: (() => void) | undefined;
 
-    const setupSubscriptions = async () => {
+    const setupDataSubscriptions = async () => {
       try {
         setLoading(true);
-        await seedInitialDataIfEmpty();
-
         unsubClients = subscribeClients((cList) => setClients(cList));
         unsubPackages = subscribePackages((pList) => setPackages(pList));
         unsubOffers = subscribeOffers((oList) => setOffers(oList));
@@ -187,33 +289,14 @@ export default function App() {
         unsubPayments = subscribePayments((payList) => setPayments(payList));
         unsubProjects = subscribeProjects((prList) => setProjects(prList));
         unsubLeads = subscribeLeads((lList) => setLeads(lList));
-        unsubTeam = subscribeTeamMembers((tList) => {
-          setTeamMembers(tList);
-          const activeUserId = localStorage.getItem('bm_active_user_id') || sessionStorage.getItem('bm_active_user_id');
-          if (activeUserId) {
-            const foundEmp = tList.find((m) => m.id === activeUserId);
-            if (foundEmp) {
-              setCurrentUser(foundEmp);
-              return;
-            }
-          }
-          setCurrentUser((prev) => {
-            if (prev) {
-              const updated = tList.find((m) => m.id === prev.id);
-              return updated || prev;
-            }
-            const owner = tList.find((m) => m.position === 'owner') || tList[0] || null;
-            return owner;
-          });
-        });
       } catch (err) {
-        console.error('Error initializing real-time subscriptions:', err);
+        console.error('Error initializing data subscriptions:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    setupSubscriptions();
+    setupDataSubscriptions();
 
     return () => {
       if (unsubClients) unsubClients();
@@ -223,23 +306,38 @@ export default function App() {
       if (unsubExpenses) unsubExpenses();
       if (unsubPayments) unsubPayments();
       if (unsubProjects) unsubProjects();
-      if (unsubTeam) unsubTeam();
       if (unsubLeads) unsubLeads();
     };
   }, [isLoggedIn]);
 
+  // Ensure user is always on an authorized screen (Redirect if unauthorized)
+  useEffect(() => {
+    if (isLoggedIn && currentUser && !isScreenAllowedForUser(currentUser, currentScreen)) {
+      const allowed = getFirstAllowedScreen(currentUser);
+      setCurrentScreen(allowed);
+    }
+  }, [currentUser, currentScreen, isLoggedIn]);
+
   // Navigation Handler
   const handleNavigate = (screen: ScreenView, sector?: SystemType) => {
+    let targetScreen = screen;
+    if (!isScreenAllowedForUser(currentUser, targetScreen)) {
+      targetScreen = getFirstAllowedScreen(currentUser);
+    }
     if (sector) {
       setSelectedSector(sector);
     }
-    setCurrentScreen(screen);
+    setCurrentScreen(targetScreen);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // CRUD Actions
   const handleAddClient = async (clientData: Omit<Client, 'id'>) => {
     return await addClient(clientData);
+  };
+
+  const handleUpdateClient = async (id: string, clientData: Partial<Client>) => {
+    await updateClient(id, clientData);
   };
 
   const handleDeleteClient = async (id: string) => {
@@ -355,6 +453,8 @@ export default function App() {
         onLoginSuccess={(member) => {
           if (member) {
             setCurrentUser(member);
+            const allowed = getFirstAllowedScreen(member);
+            setCurrentScreen(allowed);
           }
           setIsLoggedIn(true);
         }}
@@ -363,6 +463,16 @@ export default function App() {
         onInstallApp={handleInstallApp}
         isAppInstalled={isAppInstalled}
       />
+    );
+  }
+
+  // If logged in but currentUser is still loading
+  if (isLoggedIn && !currentUser && loading) {
+    return (
+      <div className="min-h-screen bg-[#0B1220] flex flex-col justify-center items-center p-4 text-white font-sans">
+        <div className="w-10 h-10 border-4 border-[#FF7A1A] border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-xs font-bold text-gray-300">جاري التحقق من الجلسة وصلاحيات الحساب...</p>
+      </div>
     );
   }
 
@@ -380,16 +490,18 @@ export default function App() {
       <div className="fixed bottom-[-10%] left-[-10%] w-[40%] h-[40%] max-w-[400px] max-h-[400px] bg-[#FF7A1A]/10 rounded-full blur-[100px] pointer-events-none z-0" />
 
       {/* Automatic responsive layout container (Mobile ~390px, Tablet md:max-w-4xl, Desktop lg:max-w-6xl) */}
-      <div className="w-full max-w-md md:max-w-4xl lg:max-w-6xl mx-auto min-h-screen flex flex-col relative shadow-2xl bg-[#0B1220] z-10 transition-all duration-300">
+      <div className="w-full max-w-md md:max-w-4xl lg:max-w-6xl mx-auto min-h-screen flex flex-col relative bg-[#0B1220] z-10 transition-all duration-300">
         {/* Navbar */}
         <Navbar
           currentScreen={currentScreen}
           onNavigate={handleNavigate}
           sales={sales}
           clients={clients}
+          leads={leads}
           currentUser={currentUser}
           onOpenBackup={() => setShowBackupModal(true)}
           onOpenInstallPwa={!isAppInstalled ? () => setShowPwaModal(true) : undefined}
+          onLogout={handleLogout}
           isAppInstalled={isAppInstalled}
         />
 
@@ -401,26 +513,8 @@ export default function App() {
               <p className="text-xs text-gray-300 font-bold">جاري تحميل البيانات والتحديث التلقائي من Firestore...</p>
             </div>
           ) : (
-            <ErrorBoundary onReset={() => handleNavigate('home')}>
-              {!isScreenAllowed(currentScreen) ? (
-                <div className="glass-card p-6 text-center space-y-4 max-w-md mx-auto my-12 border-2 border-red-500/40 bg-[#0B1220]/90 shadow-2xl animate-fade-in">
-                  <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 mx-auto flex items-center justify-center">
-                    <Lock className="w-8 h-8" />
-                  </div>
-                  <h2 className="text-sm font-extrabold text-white">
-                    شاشة محظورة ({ALL_SCREENS_CONFIG.find((s) => s.id === currentScreen)?.label || currentScreen})
-                  </h2>
-                  <p className="text-xs text-gray-300 leading-relaxed">
-                    الحساب الحالي (<span className="text-[#FF7A1A] font-bold">{currentUser?.name}</span>) لا يمتلك صلاحية لعرض هذه الشاشة. يرجى التواصل مع صاحب المشروع (البارودي) لتفعيل الصلاحية لك من شاشة إدارة الفريق.
-                  </p>
-                  <button
-                    onClick={() => handleNavigate('home')}
-                    className="btn-orange px-6 py-2.5 rounded-xl text-xs font-bold shadow-lg"
-                  >
-                    الرجوع للشاشة الرئيسية
-                  </button>
-                </div>
-              ) : (
+            <ErrorBoundary onReset={() => handleNavigate(getFirstAllowedScreen(currentUser))}>
+              {isScreenAllowedForUser(currentUser, currentScreen) && (
                 <>
                   {currentScreen === 'home' && (
                     <HomeScreen
@@ -441,6 +535,7 @@ export default function App() {
                   {currentScreen === 'pos' && (
                     <PosScreen
                       clients={clients}
+                      leads={leads}
                       packages={packages}
                       offers={offers}
                       teamMembers={teamMembers}
@@ -449,16 +544,26 @@ export default function App() {
                       onConfirmLeadDone={handleConfirmLeadDone}
                       onSaveSale={handleSaveSale}
                       onUpdateSale={handleUpdateSaleFull}
+                      onAddClient={handleAddClient}
+                      onUpdateClient={handleUpdateClient}
+                      onUpdateLead={handleUpdateLead}
                       onCancelEdit={() => setEditingSale(null)}
                       onNavigate={handleNavigate}
                     />
                   )}
 
                   {currentScreen === 'add-client' && (
-                    <AddClientScreen onAddClient={handleAddClient} onNavigate={handleNavigate} />
+                    <AddClientScreen
+                      clients={clients}
+                      leads={leads}
+                      onAddClient={handleAddClient}
+                      onUpdateClient={handleUpdateClient}
+                      onUpdateLead={handleUpdateLead}
+                      onNavigate={handleNavigate}
+                    />
                   )}
 
-                  {currentScreen === 'clients' && (
+                  {(currentScreen === 'clients' || currentScreen === 'leads') && (
                     <ClientsScreen
                       clients={clients}
                       sales={sales}
@@ -466,7 +571,9 @@ export default function App() {
                       leads={leads}
                       teamMembers={teamMembers}
                       currentUser={currentUser}
+                      initialScreen={currentScreen}
                       onDeleteClient={handleDeleteClient}
+                      onUpdateClient={handleUpdateClient}
                       onAddPayment={handleAddPayment}
                       onDeletePayment={handleDeletePayment}
                       onEditSale={handleEditSale}
@@ -498,6 +605,7 @@ export default function App() {
                       installPrompt={installPrompt}
                       onInstallApp={handleInstallApp}
                       isAppInstalled={isAppInstalled}
+                      onNavigate={handleNavigate}
                     />
                   )}
 
@@ -507,7 +615,7 @@ export default function App() {
                       projects={projects}
                       clients={clients}
                       currentUser={currentUser}
-                      onSwitchUser={(user) => setCurrentUser(user)}
+                      onSwitchUser={(user) => handleSwitchUser(user)}
                       onOpenBackup={() => setShowBackupModal(true)}
                       onAddTeamMember={(m) => addTeamMember(m)}
                       onUpdateTeamMember={async (id, m) => {
@@ -565,10 +673,10 @@ export default function App() {
         </main>
 
         {/* Global Quick Sale Floating Action Button (+) */}
-        <QuickSaleButton currentScreen={currentScreen} onOpenPos={() => handleNavigate('pos')} />
+        <QuickSaleButton currentScreen={currentScreen} onOpenPos={() => handleNavigate('pos')} currentUser={currentUser} />
 
         {/* Global Bottom Navigation */}
-        <BottomNav currentScreen={currentScreen} onNavigate={handleNavigate} />
+        <BottomNav currentScreen={currentScreen} onNavigate={handleNavigate} currentUser={currentUser} />
 
         {/* Backup & Restore Modal */}
         {showBackupModal && (

@@ -1,13 +1,27 @@
-import React, { useState } from 'react';
-import { UserPlus, Store, Phone, MapPin, Check, ChevronRight } from 'lucide-react';
-import { Client, SystemType, CategoryType, ScreenView, getCategoriesForSystem } from '../types';
+import React, { useState, useMemo } from 'react';
+import { UserPlus, Store, Phone, MapPin, Check, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Client, Lead, SystemType, CategoryType, ScreenView, getCategoriesForSystem } from '../types';
+import { checkPhoneDuplicate } from '../lib/phoneCheck';
+import { DuplicatePhoneAlert } from './DuplicatePhoneAlert';
+import { RecordDetailsModal } from './RecordDetailsModal';
 
 interface AddClientScreenProps {
+  clients?: Client[];
+  leads?: Lead[];
   onAddClient: (client: Omit<Client, 'id'>) => Promise<string>;
+  onUpdateClient?: (id: string, data: Partial<Client>) => Promise<void>;
+  onUpdateLead?: (id: string, data: Partial<Lead>) => Promise<void>;
   onNavigate: (screen: ScreenView) => void;
 }
 
-export const AddClientScreen: React.FC<AddClientScreenProps> = ({ onAddClient, onNavigate }) => {
+export const AddClientScreen: React.FC<AddClientScreenProps> = ({
+  clients = [],
+  leads = [],
+  onAddClient,
+  onUpdateClient,
+  onUpdateLead,
+  onNavigate,
+}) => {
   const [system, setSystem] = useState<SystemType>('محلات');
   const [category, setCategory] = useState<CategoryType>('سوبر ماركت');
   const [shopName, setShopName] = useState('');
@@ -15,6 +29,18 @@ export const AddClientScreen: React.FC<AddClientScreenProps> = ({ onAddClient, o
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDismissedDuplicate, setIsDismissedDuplicate] = useState(false);
+
+  const [modalRecordState, setModalRecordState] = useState<{
+    isOpen: boolean;
+    type: 'client' | 'lead' | null;
+    record: Client | Lead | null;
+  }>({ isOpen: false, type: null, record: null });
+
+  const phoneDuplicate = useMemo(
+    () => checkPhoneDuplicate(phone, clients, leads),
+    [phone, clients, leads]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,9 +187,26 @@ export const AddClientScreen: React.FC<AddClientScreenProps> = ({ onAddClient, o
             type="tel"
             placeholder="01XXXXXXXXX"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              setIsDismissedDuplicate(false);
+            }}
             className="glass-input w-full p-2.5 text-xs text-left"
             dir="ltr"
+          />
+          <DuplicatePhoneAlert
+            phoneDuplicate={phoneDuplicate}
+            clients={clients}
+            leads={leads}
+            isDismissed={isDismissedDuplicate}
+            onContinueAnyway={() => setIsDismissedDuplicate(true)}
+            onViewEditRecord={(type, rec) => {
+              setModalRecordState({
+                isOpen: true,
+                type,
+                record: rec,
+              });
+            }}
           />
         </div>
 
@@ -191,6 +234,16 @@ export const AddClientScreen: React.FC<AddClientScreenProps> = ({ onAddClient, o
           {isSubmitting ? 'جاري الحفظ...' : 'إضافة العميل وتأكيد الحفظ'}
         </button>
       </form>
+
+      {/* Record Details Modal */}
+      <RecordDetailsModal
+        isOpen={modalRecordState.isOpen}
+        recordType={modalRecordState.type}
+        record={modalRecordState.record}
+        onClose={() => setModalRecordState({ isOpen: false, type: null, record: null })}
+        onUpdateClient={onUpdateClient}
+        onUpdateLead={onUpdateLead}
+      />
     </div>
   );
 };

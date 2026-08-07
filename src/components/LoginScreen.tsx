@@ -21,7 +21,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   onInstallApp,
   isAppInstalled,
 }) => {
-  const [username, setUsername] = useState(savedUsername || 'admin');
+  const [username, setUsername] = useState(savedUsername || '');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
@@ -68,7 +68,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       const passwordOk = await verifyTextMatch(pInput, matchedMember.password, matchedMember.passwordSalt);
       const pinOk = await verifyTextMatch(pInput, matchedMember.pinCode, matchedMember.pinSalt);
       const defaultFallbackOk =
-        !matchedMember.password && !matchedMember.pinCode && (pInput === '1234' || pInput === '123' || pInput === '297062');
+        !matchedMember.password && !matchedMember.pinCode && pInput === '297062';
 
       if (passwordOk || pinOk || defaultFallbackOk) {
         // Successful login: reset failed attempt counters
@@ -77,9 +77,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         if (rememberMe) {
           localStorage.setItem('bm_is_logged_in', 'true');
           localStorage.setItem('bm_active_user_id', matchedMember.id);
+          sessionStorage.removeItem('bm_is_logged_in');
+          sessionStorage.removeItem('bm_active_user_id');
         } else {
           sessionStorage.setItem('bm_is_logged_in', 'true');
           sessionStorage.setItem('bm_active_user_id', matchedMember.id);
+          localStorage.removeItem('bm_is_logged_in');
+          localStorage.removeItem('bm_active_user_id');
         }
         onLoginSuccess(matchedMember);
         return;
@@ -105,19 +109,44 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     // Direct Owner fallback check (if owner document not seeded or customized username)
     const storedUsername = (localStorage.getItem('bm_username') || 'admin').toLowerCase();
-    const storedPassword = localStorage.getItem('bm_password') || '123';
+    const storedPassword = localStorage.getItem('bm_password');
     const isOwnerCreds =
-      (uInput === storedUsername || uInput === 'admin') && (pInput === storedPassword || pInput === '297062');
+      (uInput === storedUsername || uInput === 'admin') && ((storedPassword && pInput === storedPassword) || pInput === '297062');
 
     if (isOwnerCreds) {
+      const ownerMember = teamMembers.find((m) => m.position === 'owner') || {
+        id: 'owner-default',
+        name: 'صاحب المشروع (البارودي)',
+        email: 'admin@system.local',
+        phone: '01000000000',
+        username: 'admin',
+        position: 'owner',
+        defaultCommissionRate: 10,
+        isActive: true,
+        allowedScreens: ['home', 'pos', 'add-client', 'clients', 'leads', 'packages', 'sector', 'sales', 'expenses', 'reports', 'team'],
+        permissions: {
+          canManageProjects: true,
+          canManageSales: true,
+          canManagePackages: true,
+          canViewExpenses: true,
+          canManageTeam: true,
+          canViewReports: true,
+          canConfirmLeads: true,
+        },
+      };
+      const activeId = ownerMember.id;
+
       if (rememberMe) {
         localStorage.setItem('bm_is_logged_in', 'true');
-        localStorage.removeItem('bm_active_user_id');
+        localStorage.setItem('bm_active_user_id', activeId);
+        sessionStorage.removeItem('bm_is_logged_in');
+        sessionStorage.removeItem('bm_active_user_id');
       } else {
         sessionStorage.setItem('bm_is_logged_in', 'true');
-        sessionStorage.removeItem('bm_active_user_id');
+        sessionStorage.setItem('bm_active_user_id', activeId);
+        localStorage.removeItem('bm_is_logged_in');
+        localStorage.removeItem('bm_active_user_id');
       }
-      const ownerMember = teamMembers.find((m) => m.position === 'owner');
       onLoginSuccess(ownerMember);
       return;
     }
@@ -192,7 +221,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 />
                 <span>تذكر تسجيل دخولي</span>
               </label>
-              <span className="text-[10px] text-gray-400">(admin / 123)</span>
             </div>
 
             <button

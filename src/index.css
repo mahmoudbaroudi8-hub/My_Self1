@@ -88,20 +88,15 @@
   }
 }
 
-/* Custom scrollbars */
+/* Hide global outer scrollbars to remove side scrollbar bar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 0px;
+  height: 0px;
+  background: transparent;
 }
-::-webkit-scrollbar-track {
-  background: rgba(11, 18, 32, 0.8);
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 122, 26, 0.6);
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 /* Horizontal Scroll Strip for Filter Rows */

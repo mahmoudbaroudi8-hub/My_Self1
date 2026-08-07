@@ -43,6 +43,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         return 'إضافة عميل جديد';
       case 'clients':
         return 'سجل العملاء';
+      case 'leads':
+        return 'العملاء المحتملون (Leads)';
       case 'packages':
         return 'إدارة الباقات';
       case 'sector':
@@ -323,10 +325,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => setShowNotifications(false)}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-red-500/20 text-gray-300 hover:text-red-300 flex items-center justify-center border border-white/10 transition-colors active:scale-95"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowNotifications(false);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500 text-red-300 hover:text-white flex items-center gap-1.5 border border-red-500/40 transition-all text-xs font-bold active:scale-95 shadow-md"
                 title="إغلاق التنبيهات (X)"
               >
+                <span>إغلاق</span>
                 <X className="w-4 h-4" />
               </button>
             </div>

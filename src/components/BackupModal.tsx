@@ -131,26 +131,29 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3">
-      <div className="glass-card max-w-md w-full p-5 space-y-4 border border-[#FF7A1A]/40 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="glass-card max-w-md w-full p-5 space-y-4 border border-[#FF7A1A]/40 max-h-[90vh] overflow-y-auto relative shadow-2xl my-auto">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-[#FF7A1A]/20 text-[#FF7A1A] flex items-center justify-center">
+        <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#FF7A1A]/20 text-[#FF7A1A] flex items-center justify-center shrink-0">
               <Database className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-white">إعدادات النظام والنسخ الاحتياطي</h3>
-              <p className="text-[11px] text-gray-300">إدارة النظام، الفريق، والنسخ الاحتياطي</p>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-white truncate">إعدادات النظام والنسخ الاحتياطي</h3>
+              <p className="text-[11px] text-gray-300 truncate">إدارة النظام، الفريق، والنسخ الاحتياطي</p>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-gray-300 hover:text-white"
+            aria-label="إغلاق النافذة"
+            className="w-9 h-9 rounded-xl bg-white/10 hover:bg-red-500/20 text-gray-300 hover:text-red-400 border border-white/10 transition-colors flex items-center justify-center shrink-0 active:scale-95 cursor-pointer"
+            title="إغلاق النافذة"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 

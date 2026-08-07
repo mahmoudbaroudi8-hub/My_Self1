@@ -449,6 +449,10 @@ export async function addClient(client: Omit<Client, 'id'>): Promise<string> {
   return docRef.id;
 }
 
+export async function updateClient(id: string, client: Partial<Client>): Promise<void> {
+  await updateDoc(doc(db, 'clients', id), sanitizeForFirestore(client));
+}
+
 export async function deleteClient(id: string): Promise<void> {
   await deleteDoc(doc(db, 'clients', id));
 }

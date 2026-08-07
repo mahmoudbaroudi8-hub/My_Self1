@@ -203,6 +203,7 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
       'pos',
       'sales',
       'clients',
+      'leads',
       'packages',
       'sector',
       'expenses',
@@ -267,8 +268,8 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
       }
     }
 
-    const storedPass = localStorage.getItem('bm_password') || '123';
-    if (input === storedPass || input === '297062' || input === '1234') {
+    const storedPass = localStorage.getItem('bm_password');
+    if ((storedPass && input === storedPass) || input === '297062') {
       return true;
     }
 
