@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Lock, User, KeyRound, Download, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, UserCheck } from 'lucide-react';
 import { TeamMember } from '../types';
 import { verifyTextMatch } from '../lib/authCrypto';
-import { recordFailedLoginAttempt, resetLoginAttempts } from '../lib/firebase';
+import { recordFailedLoginAttempt, resetLoginAttempts, auth } from '../lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 interface LoginScreenProps {
   teamMembers?: TeamMember[];
@@ -64,13 +65,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         }
       }
 
-      // Verify credentials using salt if available
-      const passwordOk = await verifyTextMatch(pInput, matchedMember.password, matchedMember.passwordSalt);
-      const pinOk = await verifyTextMatch(pInput, matchedMember.pinCode, matchedMember.pinSalt);
-      const defaultFallbackOk =
-        !matchedMember.password && !matchedMember.pinCode && pInput === '297062';
+      // Verify credentials: real Firebase Auth for migrated members, legacy
+      // client-side hash check as a fallback for members not yet migrated.
+      let credentialsOk = false;
+      if (matchedMember.authUid && matchedMember.email) {
+        try {
+          await signInWithEmailAndPassword(auth, matchedMember.email, pInput);
+          credentialsOk = true;
+        } catch {
+          credentialsOk = false;
+        }
+      } else {
+        const passwordOk = await verifyTextMatch(pInput, matchedMember.password, matchedMember.passwordSalt);
+        const pinOk = await verifyTextMatch(pInput, matchedMember.pinCode, matchedMember.pinSalt);
+        const defaultFallbackOk =
+          !matchedMember.password && !matchedMember.pinCode && pInput === '297062';
+        credentialsOk = passwordOk || pinOk || defaultFallbackOk;
+      }
 
-      if (passwordOk || pinOk || defaultFallbackOk) {
+      if (credentialsOk) {
         // Successful login: reset failed attempt counters
         await resetLoginAttempts(matchedMember.id);
 
