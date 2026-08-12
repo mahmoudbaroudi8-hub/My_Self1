@@ -170,15 +170,24 @@ export const PosScreen: React.FC<PosScreenProps> = ({
       setPaidAmount(editingSale.paidAmount || 0);
 
       // Populate assigned employees
+      const editPackagePrice = Number(editingSale.packagePrice) || 0;
+      const editDevicesTotal = (editingSale.devices || []).reduce((s, d) => s + (Number(d.price) || 0), 0);
+      const editProfitBase = Math.max(0, (editingSale.finalInvoice || 0) - (editPackagePrice + editDevicesTotal));
+
       if (editingSale.employeeCommissions && editingSale.employeeCommissions.length > 0) {
-        setAssignedEmployees(editingSale.employeeCommissions);
+        setAssignedEmployees(
+          editingSale.employeeCommissions.map((item) => ({
+            ...item,
+            commissionAmount: (editProfitBase * (Number(item.commissionPercent) || 0)) / 100,
+          }))
+        );
       } else if (editingSale.assignedEmployeeId) {
         setAssignedEmployees([
           {
             employeeId: editingSale.assignedEmployeeId,
             employeeName: editingSale.assignedEmployeeName || 'موظف مسؤول',
             commissionPercent: editingSale.employeeCommissionRate || 10,
-            commissionAmount: ((editingSale.finalInvoice || 0) * (editingSale.employeeCommissionRate || 10)) / 100,
+            commissionAmount: (editProfitBase * (editingSale.employeeCommissionRate || 10)) / 100,
           },
         ]);
       }
@@ -332,6 +341,21 @@ export const PosScreen: React.FC<PosScreenProps> = ({
   const subtotal = (Number(packagePrice) || 0) + devicesTotal + visitsTotal;
   const finalInvoice = Math.max(0, subtotal - (Number(discount) || 0));
 
+  // Profit Base = Final Invoice - (Package Price + Total Devices Price)
+  const packagePriceVal = Number(packagePrice) || 0;
+  const profitBase = Math.max(0, finalInvoice - (packagePriceVal + devicesTotal));
+
+  // Deduplicate team members for selection dropdown
+  const uniqueTeamMembers = useMemo(() => {
+    const seen = new Set<string>();
+    return (teamMembers || []).filter((m) => {
+      const key = m.id || m.name;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [teamMembers]);
+
   // Auto set paidAmount to finalInvoice if user hasn't explicitly edited paidAmount (and not editing)
   useEffect(() => {
     if (!editingSale) {
@@ -356,7 +380,7 @@ export const PosScreen: React.FC<PosScreenProps> = ({
         employeeName: emp.name,
         position: emp.position,
         commissionPercent: defaultRate,
-        commissionAmount: (finalInvoice * defaultRate) / 100,
+        commissionAmount: (profitBase * defaultRate) / 100,
       },
     ]);
   };
@@ -372,7 +396,7 @@ export const PosScreen: React.FC<PosScreenProps> = ({
           return {
             ...item,
             commissionPercent: rate,
-            commissionAmount: (finalInvoice * rate) / 100,
+            commissionAmount: (profitBase * rate) / 100,
           };
         }
         return item;
@@ -450,7 +474,7 @@ export const PosScreen: React.FC<PosScreenProps> = ({
 
       const finalEmployeeCommissions = assignedEmployees.map((item) => ({
         ...item,
-        commissionAmount: (finalInvoice * (Number(item.commissionPercent) || 0)) / 100,
+        commissionAmount: (profitBase * (Number(item.commissionPercent) || 0)) / 100,
       }));
 
       const saleData: Omit<Sale, 'id'> = {
@@ -1013,7 +1037,7 @@ export const PosScreen: React.FC<PosScreenProps> = ({
               <option value="" disabled>
                 + اختر موظف من قائمة الفريق...
               </option>
-              {teamMembers
+              {uniqueTeamMembers
                 .filter((m) => m.isActive !== false)
                 .map((m) => (
                   <option key={m.id} value={m.id}>
@@ -1026,9 +1050,11 @@ export const PosScreen: React.FC<PosScreenProps> = ({
           {/* Assigned Employees List Cards */}
           {assignedEmployees.length > 0 ? (
             <div className="space-y-2">
-              <span className="text-[10px] text-gray-400 block font-medium">الموظفون المسندون ونسب العمولات القابلة للتعديل:</span>
+              <span className="text-[10px] text-gray-400 block font-medium">
+                الموظفون المسندون ونسب العمولات القابلة للتعديل (العمولة تُحسب كـ % من المكسب = {profitBase.toLocaleString('ar-EG')} ج.م):
+              </span>
               {assignedEmployees.map((emp) => {
-                const commAmount = (finalInvoice * (Number(emp.commissionPercent) || 0)) / 100;
+                const commAmount = (profitBase * (Number(emp.commissionPercent) || 0)) / 100;
 
                 return (
                   <div

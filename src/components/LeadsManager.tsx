@@ -63,6 +63,18 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
   });
 
   const isOwner = !currentUser || currentUser.position === 'owner';
+
+  // Deduplicate team members for follow-up assignment list
+  const uniqueTeamMembers = useMemo(() => {
+    const seen = new Set<string>();
+    return (teamMembers || []).filter((m) => {
+      const key = m.id || m.name;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [teamMembers]);
+
   const phoneDuplicate = useMemo(
     () => checkPhoneDuplicate(phone, clients, leads, editingLeadId || undefined),
     [phone, clients, leads, editingLeadId]
@@ -423,16 +435,17 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
 
       {/* Add / Edit Lead Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="glass-card max-w-lg w-full p-6 space-y-4 border border-[#FF7A1A]">
+        <div className="fixed inset-0 z-[110] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="glass-card max-w-lg w-full p-5 space-y-4 border border-[#FF7A1A]/50 max-h-[85vh] overflow-y-auto relative my-auto shadow-2xl animate-fade-in">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Target className="w-4 h-4 text-[#FF7A1A]" />
                 {editingLeadId ? 'تعديل بيانات العميل المحتمل' : 'إضافة عميل محتمل جديد (Lead)'}
               </h3>
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-white text-xs font-bold"
+                className="text-gray-400 hover:text-white text-xs font-bold p-1 rounded-lg hover:bg-white/10 transition-colors"
               >
                 إغلاق ✕
               </button>
@@ -525,7 +538,7 @@ export const LeadsManager: React.FC<LeadsManagerProps> = ({
                 <div>
                   <label className="text-[11px] text-gray-300 mb-1 block font-bold">إسناد الموظفين المتابعين للـ Lead</label>
                   <div className="max-h-36 overflow-y-auto p-2 bg-black/30 rounded-xl border border-white/5 space-y-1">
-                    {teamMembers.map((m) => {
+                    {uniqueTeamMembers.map((m) => {
                       const isAssigned = assignedEmployeeIds.includes(m.id);
                       return (
                         <label

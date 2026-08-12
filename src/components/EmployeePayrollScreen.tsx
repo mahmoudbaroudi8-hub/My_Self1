@@ -199,11 +199,15 @@ export const EmployeePayrollScreen: React.FC<EmployeePayrollScreenProps> = ({
       }
 
       const invoiceAmount = sale.finalInvoice || 0;
-      const commissionAmount = (invoiceAmount * commRate) / 100;
+      const packagePrice = Number(sale.packagePrice) || 0;
+      const devicesTotal = (sale.devices || []).reduce((acc, d) => acc + (Number(d.price) || 0), 0);
+      const profitBase = Math.max(0, invoiceAmount - (packagePrice + devicesTotal));
+      const commissionAmount = (profitBase * commRate) / 100;
 
       return {
         sale,
         commRate,
+        profitBase,
         commissionAmount,
         invoiceAmount,
       };
