@@ -180,6 +180,7 @@ export interface TeamMember {
   whatsappPhone?: string;
   username?: string;
   password?: string;
+  authUid?: string; // Firebase Authentication UID once migrated to real per-employee login
   position: TeamMemberPosition;
   customPositionTitle?: string;
   defaultCommissionRate: number; // Percentage % (default 10)
