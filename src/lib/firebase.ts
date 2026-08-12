@@ -1,4 +1,5 @@
-import { initializeApp, getApps } from 'firebase/app';
+import { initializeApp, getApps, deleteApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import {
   getFirestore,
   enableMultiTabIndexedDbPersistence,
@@ -6,6 +7,7 @@ import {
   getDocs,
   addDoc,
   doc,
+  setDoc,
   updateDoc,
   deleteDoc,
   onSnapshot,
@@ -33,14 +35,61 @@ export const db = firebaseConfigData.firestoreDatabaseId
   ? getFirestore(app, firebaseConfigData.firestoreDatabaseId)
   : getFirestore(app);
 
-// Enable Firestore offline data persistence across tabs
+export const auth = getAuth(app);
+
+// Gate: any read/write to Firestore must wait for an authenticated session first.
+// This is a baseline barrier (blocks unauthenticated scraping of the raw database),
+// NOT a full role-based security model — every signed-in session still shares the
+// same access level. Real per-user/per-client isolation needs Firebase Auth per
+// team member + Cloud Functions / custom claims (see project notes).
+let authReadyPromise: Promise<void> | null = null;
+export function ensureAuthReady(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+  if (!authReadyPromise) {
+    authReadyPromise = new Promise((resolve) => {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user) {
+          unsubscribe();
+          resolve();
+        } else {
+          signInAnonymously(auth).catch((err) => {
+            console.error('Firebase anonymous sign-in failed:', err);
+            resolve(); // don't hang the app forever if auth is misconfigured
+          });
+        }
+      });
+    });
+  }
+  return authReadyPromise;
+}
+
+// Creates a real Firebase Authentication account for an employee, WITHOUT
+// signing the current admin out. We do this by spinning up a temporary,
+// isolated "secondary" Firebase app instance just for the create call, then
+// tearing it down immediately — the admin's own auth session (in the main
+// `auth` instance above) is never touched.
+export async function createAuthAccountForMember(email: string, password: string): Promise<string> {
+  const secondaryApp = initializeApp(firebaseConfig, `member-creation-${Date.now()}`);
+  try {
+    const secondaryAuth = getAuth(secondaryApp);
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    await signOut(secondaryAuth);
+    return cred.user.uid;
+  } finally {
+    await deleteApp(secondaryApp);
+  }
+}
+
+// Enable Firestore offline data persistence across tabs (after auth is established)
 if (typeof window !== 'undefined') {
-  enableMultiTabIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Firestore offline persistence failed: Multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Firestore offline persistence not supported in this browser');
-    }
+  ensureAuthReady().then(() => {
+    enableMultiTabIndexedDbPersistence(db).catch((err) => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Firestore offline persistence failed: Multiple tabs open');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Firestore offline persistence not supported in this browser');
+      }
+    });
   });
 }
 
@@ -668,7 +717,26 @@ export async function addTeamMember(member: Omit<TeamMember, 'id'>): Promise<str
   payload.pinCode = pinHash;
   payload.pinSalt = pSalt;
 
+  // If email + password are provided, create a REAL Firebase Authentication
+  // account for this employee (via a throwaway secondary app instance so the
+  // admin's own session stays logged in). The doc ID is then set to match the
+  // Auth UID, which is what lets Firestore security rules verify "who is
+  // asking" server-side instead of trusting the browser.
+  let authUid: string | undefined;
+  if (payload.email && payload.password) {
+    try {
+      authUid = await createAuthAccountForMember(payload.email, payload.password);
+    } catch (err: any) {
+      throw new Error(
+        err?.code === 'auth/email-already-in-use'
+          ? 'البريد الإلكتروني ده مستخدم بالفعل لحساب دخول آخر'
+          : `تعذر إنشاء حساب دخول للموظف: ${err?.message || err}`
+      );
+    }
+  }
+
   if (payload.password) {
+    // Keep a hashed copy too, only used as a legacy/offline fallback.
     const { hash: passHash, salt: passSalt } = await hashText(payload.password);
     payload.password = passHash;
     payload.passwordSalt = passSalt;
@@ -676,6 +744,14 @@ export async function addTeamMember(member: Omit<TeamMember, 'id'>): Promise<str
 
   payload.failedLoginAttempts = 0;
   payload.lockedUntil = '';
+  if (authUid) payload.authUid = authUid;
+
+  if (authUid) {
+    // Use the Auth UID as the Firestore document ID (standard pattern that
+    // lets security rules look up "my own" team_members doc via request.auth.uid).
+    await setDoc(doc(db, 'team_members', authUid), sanitizeForFirestore(payload));
+    return authUid;
+  }
 
   const docRef = await addDoc(collection(db, 'team_members'), sanitizeForFirestore(payload));
   return docRef.id;
