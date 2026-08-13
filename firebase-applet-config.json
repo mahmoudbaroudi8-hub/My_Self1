@@ -1,12 +1,12 @@
 {
-  "projectId": "clear-concord-7lsxp",
-  "appId": "1:45901220515:web:a4e1da297ce941c3a7cd16",
-  "apiKey": "AIzaSyDbgwGQGpEUkwHzeQ9YmBXBx6_iFauQIVI",
-  "authDomain": "clear-concord-7lsxp.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-businessmanager-bae8257c-b9d6-4fa1-bc1b-163f4b9d969b",
-  "storageBucket": "clear-concord-7lsxp.firebasestorage.app",
-  "messagingSenderId": "45901220515",
-  "measurementId": "",
-  "oAuthClientId": "45901220515-cgj0a9bm4gg1uljkip7deldpfb7fsnn5.apps.googleusercontent.com",
+  "projectId": "baroudi-system",
+  "appId": "1:1095014888001:web:763a937b237a86be900cc0",
+  "apiKey": "AIzaSyD2SZ4s3ucXjMMo65Mbvs5jNjojUao2DvY",
+  "authDomain": "baroudi-system.firebaseapp.com",
+  "firestoreDatabaseId": "",
+  "storageBucket": "baroudi-system.firebasestorage.app",
+  "messagingSenderId": "1095014888001",
+  "measurementId": "G-5QNDQD5XFH",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }
