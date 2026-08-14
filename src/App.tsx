@@ -30,6 +30,7 @@ import {
   updateTeamMember,
   deleteTeamMember,
   seedInitialDataIfEmpty,
+  ensureAuthReady,
   subscribeClients,
   subscribePackages,
   subscribeOffers,
@@ -186,6 +187,7 @@ export default function App() {
     let unsubTeam: (() => void) | undefined;
     const initTeam = async () => {
       try {
+        await ensureAuthReady();
         await seedInitialDataIfEmpty();
         unsubTeam = subscribeTeamMembers((tList) => {
           setTeamMembers(tList);
@@ -467,7 +469,7 @@ export default function App() {
   }
 
   // If logged in but currentUser is still loading
-  if (isLoggedIn && !currentUser && loading) {
+  if (isLoggedIn && !currentUser) {
     return (
       <div className="min-h-screen bg-[#0B1220] flex flex-col justify-center items-center p-4 text-white font-sans">
         <div className="w-10 h-10 border-4 border-[#FF7A1A] border-t-transparent rounded-full animate-spin mb-3" />
