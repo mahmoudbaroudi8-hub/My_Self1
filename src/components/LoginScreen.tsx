@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock, User, KeyRound, Download, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, UserCheck } from 'lucide-react';
 import { TeamMember } from '../types';
 import { verifyTextMatch } from '../lib/authCrypto';
-import { recordFailedLoginAttempt, resetLoginAttempts, auth } from '../lib/firebase';
+import { recordFailedLoginAttempt, resetLoginAttempts, auth, migrateMemberToRealAuth } from '../lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
 interface LoginScreenProps {
@@ -86,6 +86,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       if (credentialsOk) {
         // Successful login: reset failed attempt counters
         await resetLoginAttempts(matchedMember.id);
+
+        // Silent one-time upgrade: if this member logged in via the legacy
+        // path (no real Firebase Auth account yet) and has an email on file,
+        // give them a real account now using the password they just typed.
+        // Runs in the background — never blocks or fails the login itself.
+        if (!matchedMember.authUid && matchedMember.email) {
+          migrateMemberToRealAuth(matchedMember, pInput).catch(() => {});
+        }
 
         if (rememberMe) {
           localStorage.setItem('bm_is_logged_in', 'true');
