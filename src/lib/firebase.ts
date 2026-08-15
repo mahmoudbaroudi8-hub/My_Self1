@@ -1,5 +1,5 @@
 import { initializeApp, getApps, deleteApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import {
   getFirestore,
   enableMultiTabIndexedDbPersistence,
@@ -77,6 +77,30 @@ export async function createAuthAccountForMember(email: string, password: string
     return cred.user.uid;
   } finally {
     await deleteApp(secondaryApp);
+  }
+}
+
+// One-time silent upgrade for members created before real per-employee auth
+// existed (e.g. the owner's seeded account). Keeps their existing
+// team_members document ID untouched (so nothing that references it, like
+// sales or commissions, breaks) and instead records a small lookup doc
+// mapping their new Firebase Auth UID -> their existing team member ID.
+// Security rules use this map to find "who is asking" without needing the
+// document ID itself to equal the Auth UID.
+export async function migrateMemberToRealAuth(member: TeamMember, plainPassword: string): Promise<string | null> {
+  if (!member.email || member.authUid) return null;
+  try {
+    const newUid = await createAuthAccountForMember(member.email, plainPassword);
+    // Switch the main app's session to the new real account BEFORE writing
+    // the linkage docs, so the security rules (which check request.auth.uid)
+    // see the write as coming from the account it's actually about.
+    await signInWithEmailAndPassword(auth, member.email, plainPassword);
+    await setDoc(doc(db, 'uid_map', newUid), { teamMemberId: member.id });
+    await updateDoc(doc(db, 'team_members', member.id), { authUid: newUid });
+    return newUid;
+  } catch (err: any) {
+    console.error('Silent auth migration failed:', err);
+    return null;
   }
 }
 
