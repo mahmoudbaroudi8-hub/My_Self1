@@ -127,6 +127,7 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
   const [canManageTeam, setCanManageTeam] = useState<boolean>(false);
   const [canViewReports, setCanViewReports] = useState<boolean>(true);
   const [canConfirmLeads, setCanConfirmLeads] = useState<boolean>(false);
+  const [canManageClients, setCanManageClients] = useState<boolean>(false);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -176,6 +177,7 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
     setCanManageTeam(member.permissions?.canManageTeam ?? false);
     setCanViewReports(member.permissions?.canViewReports ?? true);
     setCanConfirmLeads(member.permissions?.canConfirmLeads ?? false);
+    setCanManageClients(member.permissions?.canManageClients ?? false);
 
     setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -362,6 +364,7 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
           canManageTeam,
           canViewReports,
           canConfirmLeads,
+          canManageClients,
         },
       };
 
@@ -930,6 +933,11 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
                           التقارير
                         </span>
                       )}
+                      {member.permissions?.canManageClients && (
+                        <span className="px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-300 border border-orange-500/20">
+                          إدارة العملاء
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1338,6 +1346,16 @@ export const TeamScreen: React.FC<TeamScreenProps> = ({
                     className="w-4 h-4 accent-emerald-500 rounded"
                   />
                   <span className="text-emerald-300 font-bold">🎯 تأكيد العملاء المحتملين وتحويلهم لمبيعات (Can Confirm Leads)</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-white/5 p-2 rounded-xl border border-white/5 hover:bg-white/10">
+                  <input
+                    type="checkbox"
+                    checked={canManageClients}
+                    onChange={(e) => setCanManageClients(e.target.checked)}
+                    className="w-4 h-4 accent-[#FF7A1A] rounded"
+                  />
+                  <span>🧑‍🤝‍🧑 إضافة وتعديل بيانات العملاء</span>
                 </label>
               </div>
             </div>
