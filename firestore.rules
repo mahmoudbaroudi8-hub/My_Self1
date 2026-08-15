@@ -1,39 +1,107 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Team Members Collection
+
+    // ---- Identity helpers ------------------------------------------------
+    // Real per-employee permissions. A signed-in session maps to a
+    // team_members document either directly (its ID == the Auth UID, for
+    // members created after real per-employee login existed) or through a
+    // small uid_map lookup doc (for members silently upgraded from the old
+    // login system — see migrateMemberToRealAuth in src/lib/firebase.ts).
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myTeamMemberId() {
+      return exists(/databases/$(database)/documents/uid_map/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/uid_map/$(request.auth.uid)).data.teamMemberId
+        : request.auth.uid;
+    }
+
+    function myMemberExists() {
+      return exists(/databases/$(database)/documents/team_members/$(myTeamMemberId()));
+    }
+
+    function myMember() {
+      return get(/databases/$(database)/documents/team_members/$(myTeamMemberId()));
+    }
+
+    function isOwner() {
+      return isSignedIn() && myMemberExists() && myMember().data.position == 'owner';
+    }
+
+    function hasPerm(permName) {
+      return isSignedIn() && (
+        isOwner() ||
+        (myMemberExists() && myMember().data.permissions[permName] == true)
+      );
+    }
+
+    // ---- uid_map: links a Firebase Auth UID to an existing team_members
+    // doc, for members migrated from the old login system. A user may only
+    // ever create the mapping for their OWN uid, and only when the target
+    // team_members record's email matches their own Auth email and hasn't
+    // already been linked to a different account.
+    match /uid_map/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.teamMemberId is string
+        && get(/databases/$(database)/documents/team_members/$(request.resource.data.teamMemberId)).data.email == request.auth.token.email
+        && !('authUid' in get(/databases/$(database)/documents/team_members/$(request.resource.data.teamMemberId)).data);
+      allow update, delete: if false;
+    }
+
+    // ---- Team & projects ---------------------------------------------------
     match /team_members/{memberId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+      allow read: if isSignedIn();
+      allow create, delete: if hasPerm('canManageTeam');
+      allow update: if hasPerm('canManageTeam')
+        || (
+          isSignedIn() && myTeamMemberId() == memberId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authUid'])
+        );
     }
 
-    // Projects Collection (linked with pricing model, status & assigned team)
     match /projects/{projectId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+      allow read: if isSignedIn();
+      allow create, update, delete: if hasPerm('canManageProjects');
     }
 
-    // General App Collections
+    // ---- Business data: read open to any signed-in team member, write
+    // gated by the specific permission that screen requires ----------------
     match /clients/{document=**} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow write: if hasPerm('canManageClients');
     }
     match /packages/{document=**} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow write: if hasPerm('canManagePackages');
     }
     match /offers/{document=**} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow write: if hasPerm('canManagePackages');
     }
     match /sales/{document=**} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow write: if hasPerm('canManageSales');
     }
     match /expenses/{document=**} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow write: if hasPerm('canViewExpenses');
+    }
+    match /payments/{document=**} {
+      allow read: if isSignedIn();
+      allow write: if hasPerm('canManageSales');
+    }
+    match /leads/{document=**} {
+      allow read: if isSignedIn();
+      allow write: if hasPerm('canConfirmLeads');
     }
 
-    // Default fallback
+    // Default fallback — closed to unauthenticated requests
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
     }
   }
 }
