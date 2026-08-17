@@ -35,6 +35,7 @@ import {
   X
 } from 'lucide-react';
 import { ProtectedDeleteModal } from './ProtectedDeleteModal';
+import { hasPermission } from '../lib/permissions';
 import {
   Package,
   Offer,
@@ -103,6 +104,7 @@ interface PackagesScreenProps {
   offers: Offer[];
   projects: ProjectItem[];
   teamMembers?: TeamMember[];
+  currentUser: TeamMember | null;
   onAddPackage: (pkg: Omit<Package, 'id'>) => Promise<string>;
   onUpdatePackage: (id: string, pkg: Partial<Package>) => Promise<void>;
   onDeletePackage: (id: string) => Promise<void>;
@@ -124,6 +126,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   offers,
   projects,
   teamMembers = [],
+  currentUser,
   onAddPackage,
   onUpdatePackage,
   onDeletePackage,
@@ -139,6 +142,8 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
   isAppInstalled,
   onNavigate,
 }) => {
+  const canManagePkgs = hasPermission(currentUser, 'canManagePackages');
+  const canManageProj = hasPermission(currentUser, 'canManageProjects');
   // Main settings menu tabs
   const [activeTab, setActiveTab] = useState<
     'catalog' | 'manage_packages' | 'manage_offers' | 'manage_projects' | 'account'
@@ -776,6 +781,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
           <span>الكتالوج المنظم</span>
         </button>
 
+        {canManagePkgs && (
         <button
           type="button"
           onClick={() => {
@@ -791,7 +797,9 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
           <PkgIcon className="w-3.5 h-3.5" />
           <span>إدارة الباقات ({packages.length})</span>
         </button>
+        )}
 
+        {canManagePkgs && (
         <button
           type="button"
           onClick={() => {
@@ -807,7 +815,9 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
           <Tag className="w-3.5 h-3.5" />
           <span>إدارة العروض ({offers.length})</span>
         </button>
+        )}
 
+        {canManageProj && (
         <button
           type="button"
           onClick={() => {
@@ -823,6 +833,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
           <FolderKanban className="w-3.5 h-3.5" />
           <span>معرض المشاريع ({projects.length})</span>
         </button>
+        )}
 
         <button
           type="button"
@@ -1732,6 +1743,7 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
 
       {/* ---------------- 2. MANAGE PACKAGES TAB ---------------- */}
       {activeTab === 'manage_packages' && (
+        canManagePkgs ? (
         <div className="space-y-4">
           {/* Select package dropdown */}
           <div className="glass-card p-4 space-y-3">
@@ -1930,10 +1942,16 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
             </div>
           </div>
         </div>
+        ) : (
+          <div className="glass-card p-8 text-center text-gray-400 text-xs">
+            معندكش صلاحية إدارة الباقات. تواصل مع صاحب الحساب لو محتاج الصلاحية دي.
+          </div>
+        )
       )}
 
       {/* ---------------- 3. MANAGE OFFERS TAB ---------------- */}
       {activeTab === 'manage_offers' && (
+        canManagePkgs ? (
         <div className="space-y-4">
           {/* Select offer dropdown */}
           <div className="glass-card p-4 space-y-3">
@@ -2233,10 +2251,16 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
             </div>
           </div>
         </div>
+        ) : (
+          <div className="glass-card p-8 text-center text-gray-400 text-xs">
+            معندكش صلاحية إدارة الباقات. تواصل مع صاحب الحساب لو محتاج الصلاحية دي.
+          </div>
+        )
       )}
 
       {/* ---------------- 4. MANAGE PROJECTS TAB ---------------- */}
       {activeTab === 'manage_projects' && (
+        canManageProj ? (
         <div className="space-y-4">
           {/* Select project dropdown */}
           <div className="glass-card p-4 space-y-3">
@@ -2681,6 +2705,11 @@ export const PackagesScreen: React.FC<PackagesScreenProps> = ({
             </button>
           </div>
         </div>
+        ) : (
+          <div className="glass-card p-8 text-center text-gray-400 text-xs">
+            معندكش صلاحية إدارة المشاريع. تواصل مع صاحب الحساب لو محتاج الصلاحية دي.
+          </div>
+        )
       )}
 
       {/* ---------------- 5. ACCOUNT SETTINGS & INSTALL APP TAB ---------------- */}
