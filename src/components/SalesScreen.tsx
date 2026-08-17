@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { Receipt, Search, Filter, Check, Send, Trash2, Eye, Printer, Phone, Calendar, Globe, ExternalLink, Copy, FileSpreadsheet, Edit3 } from 'lucide-react';
-import { Sale, Client, ScreenView } from '../types';
+import { Sale, Client, ScreenView, TeamMember } from '../types';
 import { shareInvoicePdf } from '../lib/pdfInvoice';
 import { exportSalesToExcel } from '../lib/excelExport';
 import { CorporateInvoiceModal } from './CorporateInvoiceModal';
 import { ProtectedDeleteModal } from './ProtectedDeleteModal';
+import { hasPermission } from '../lib/permissions';
 
 interface SalesScreenProps {
   sales: Sale[];
   clients?: Client[];
+  currentUser: TeamMember | null;
   onUpdateSaleStatus: (id: string, status: 'mowakad' | 'morsal_qabl_dafa') => Promise<void>;
   onEditSale?: (sale: Sale) => void;
   onDeleteSale: (id: string) => Promise<void>;
@@ -18,11 +20,13 @@ interface SalesScreenProps {
 export const SalesScreen: React.FC<SalesScreenProps> = ({
   sales,
   clients,
+  currentUser,
   onUpdateSaleStatus,
   onEditSale,
   onDeleteSale,
   onNavigate,
 }) => {
+  const canManageSales = hasPermission(currentUser, 'canManageSales');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'mowakad' | 'morsal_qabl_dafa'>('all');
   const [startDate, setStartDate] = useState('');
@@ -249,7 +253,7 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
                       <Send className="w-3.5 h-3.5 text-emerald-400" /> PDF واتساب
                     </button>
 
-                    {onEditSale && (
+                    {onEditSale && canManageSales && (
                       <button
                         onClick={() => onEditSale(sale)}
                         className="glass-button px-2.5 py-1 text-[11px] text-[#FF7A1A] flex items-center gap-1 hover:bg-[#FF7A1A]/20"
@@ -259,7 +263,7 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
                       </button>
                     )}
 
-                    {sale.status === 'morsal_qabl_dafa' && (
+                    {sale.status === 'morsal_qabl_dafa' && canManageSales && (
                       <button
                         onClick={() => onUpdateSaleStatus(sale.id, 'mowakad')}
                         className="glass-button px-2.5 py-1 text-[11px] text-emerald-400 flex items-center gap-1 hover:bg-emerald-500/20"
@@ -269,6 +273,7 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
                     )}
                   </div>
 
+                  {canManageSales && (
                   <button
                     onClick={() => {
                       setDeleteModalState({
@@ -282,6 +287,7 @@ export const SalesScreen: React.FC<SalesScreenProps> = ({
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
+                  )}
                 </div>
               </div>
             );
