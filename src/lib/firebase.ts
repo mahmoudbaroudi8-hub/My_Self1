@@ -47,15 +47,39 @@ export function ensureAuthReady(): Promise<void> {
   if (typeof window === 'undefined') return Promise.resolve();
   if (!authReadyPromise) {
     authReadyPromise = new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      // Safety net: never block app startup for more than 5s waiting on
+      // auth/network, even if onLine reporting is wrong or the request
+      // hangs instead of failing outright.
+      const timeoutId = setTimeout(finish, 5000);
+
       const unsubscribe = onAuthStateChanged(auth, (user) => {
         if (user) {
+          clearTimeout(timeoutId);
           unsubscribe();
-          resolve();
+          finish();
+        } else if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          // Offline and no cached session on this device — don't block the
+          // app waiting on a network call that's guaranteed to fail. Let it
+          // proceed; Firestore will serve whatever it has in local cache.
+          clearTimeout(timeoutId);
+          unsubscribe();
+          finish();
         } else {
-          signInAnonymously(auth).catch((err) => {
-            console.error('Firebase anonymous sign-in failed:', err);
-            resolve(); // don't hang the app forever if auth is misconfigured
-          });
+          signInAnonymously(auth)
+            .catch((err) => {
+              console.error('Firebase anonymous sign-in failed:', err);
+            })
+            .finally(() => {
+              clearTimeout(timeoutId);
+              finish(); // don't hang the app forever if auth is misconfigured or offline
+            });
         }
       });
     });
