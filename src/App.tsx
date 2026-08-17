@@ -541,6 +541,7 @@ export default function App() {
                       packages={packages}
                       offers={offers}
                       teamMembers={teamMembers}
+                      currentUser={currentUser}
                       editingSale={editingSale}
                       prefilledLead={prefilledLead}
                       onConfirmLeadDone={handleConfirmLeadDone}
@@ -594,6 +595,7 @@ export default function App() {
                       offers={offers}
                       projects={projects}
                       teamMembers={teamMembers}
+                      currentUser={currentUser}
                       onAddPackage={handleAddPackage}
                       onUpdatePackage={handleUpdatePackage}
                       onDeletePackage={handleDeletePackage}
@@ -644,6 +646,7 @@ export default function App() {
                     <SalesScreen
                       sales={sales}
                       clients={clients}
+                      currentUser={currentUser}
                       onUpdateSaleStatus={handleUpdateSaleStatus}
                       onEditSale={handleEditSale}
                       onDeleteSale={handleDeleteSale}
@@ -654,6 +657,7 @@ export default function App() {
                   {currentScreen === 'expenses' && (
                     <ExpensesScreen
                       expenses={expenses}
+                      currentUser={currentUser}
                       onAddExpense={handleAddExpense}
                       onDeleteExpense={handleDeleteExpense}
                     />
