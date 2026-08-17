@@ -1,4 +1,4 @@
-const CACHE_NAME = 'business-manager-pwa-v2';
+const CACHE_NAME = 'business-manager-pwa-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -37,7 +37,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  
+
   // Ignore chrome-extension or external analytics
   const url = new URL(event.request.url);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
@@ -46,9 +46,36 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const isNavigation =
+    event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html');
+
+  if (isNavigation) {
+    // Network-first for the HTML shell: every deploy changes the hashed
+    // asset filenames it references, so a stale cached HTML page can point
+    // at JS/CSS files that no longer exist. Always prefer a fresh copy when
+    // online; only fall back to whatever was last cached when truly offline.
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+              cache.put('/index.html', responseToCache.clone ? responseToCache.clone() : responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html') || caches.match('/')))
+    );
+    return;
+  }
+
+  // Hashed build assets (JS/CSS with content hashes in the filename) are
+  // safe to serve cache-first and refresh in the background: a changed
+  // file gets a new filename, so a stale cache entry never masks new code.
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      // Return cached response immediately if available, while updating cache in background
       const fetchPromise = fetch(event.request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
@@ -59,13 +86,7 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => {
-          // Network failed, fallback to index.html for navigation requests
-          if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('/index.html') || caches.match('/');
-          }
-          return null;
-        });
+        .catch(() => null);
 
       return cachedResponse || fetchPromise;
     })
