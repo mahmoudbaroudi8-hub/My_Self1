@@ -1,20 +1,24 @@
 import React, { useState } from 'react';
 import { ShoppingBag, Plus, Trash2, Calendar, CreditCard, Tag, FileSpreadsheet } from 'lucide-react';
-import { Expense, SystemType } from '../types';
+import { Expense, SystemType, TeamMember } from '../types';
 import { exportExpensesToExcel } from '../lib/excelExport';
 import { ProtectedDeleteModal } from './ProtectedDeleteModal';
+import { hasPermission } from '../lib/permissions';
 
 interface ExpensesScreenProps {
   expenses: Expense[];
+  currentUser: TeamMember | null;
   onAddExpense: (expense: Omit<Expense, 'id'>) => Promise<string>;
   onDeleteExpense: (id: string) => Promise<void>;
 }
 
 export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
   expenses,
+  currentUser,
   onAddExpense,
   onDeleteExpense,
 }) => {
+  const canWrite = hasPermission(currentUser, 'canViewExpenses');
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState<string>('');
   const [category, setCategory] = useState('أجهزة ومستلزمات');
@@ -91,12 +95,14 @@ export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
             <FileSpreadsheet className="w-4 h-4" />
             <span className="hidden sm:inline">تصدير Excel</span>
           </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="btn-orange px-3 py-1.5 text-xs font-bold flex items-center gap-1"
-          >
-            <Plus className="w-4 h-4" /> إضافة مصروف
-          </button>
+          {canWrite && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="btn-orange px-3 py-1.5 text-xs font-bold flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" /> إضافة مصروف
+            </button>
+          )}
         </div>
       </div>
 
@@ -150,6 +156,7 @@ export const ExpensesScreen: React.FC<ExpensesScreenProps> = ({
                   }}
                   className="text-gray-500 hover:text-red-400 p-1"
                   title="حذف المصروف"
+                  style={{ display: canWrite ? undefined : 'none' }}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
