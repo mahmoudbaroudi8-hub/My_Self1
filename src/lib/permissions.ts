@@ -65,3 +65,15 @@ export const getFirstAllowedScreen = (
   }
   return 'home';
 };
+
+// Granular action-level permission check (add/edit/delete buttons), separate
+// from screen-level visibility above. Owner always passes. Must mirror the
+// permission names checked server-side in firestore.rules.
+export const hasPermission = (
+  currentUser: TeamMember | null | undefined,
+  permission: keyof NonNullable<TeamMember['permissions']>
+): boolean => {
+  if (!currentUser) return false;
+  if (currentUser.position === 'owner') return true;
+  return Boolean(currentUser.permissions?.[permission]);
+};
