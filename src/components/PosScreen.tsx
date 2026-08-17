@@ -17,6 +17,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Accordion } from './Accordion';
+import { hasPermission } from '../lib/permissions';
 import { Client, Package, Offer, Sale, SystemType, CategoryType, DeviceItem, VisitItem, ScreenView, ItemType, getCategoriesForSystem, TeamMember, POSITION_LABELS, EmployeeCommissionItem, Lead } from '../types';
 import { shareInvoicePdf } from '../lib/pdfInvoice';
 import { checkPhoneDuplicate } from '../lib/phoneCheck';
@@ -29,6 +30,7 @@ interface PosScreenProps {
   packages: Package[];
   offers: Offer[];
   teamMembers?: TeamMember[];
+  currentUser: TeamMember | null;
   editingSale?: Sale | null;
   prefilledLead?: Lead | null;
   onConfirmLeadDone?: (leadId: string) => Promise<void>;
@@ -47,6 +49,7 @@ export const PosScreen: React.FC<PosScreenProps> = ({
   packages,
   offers,
   teamMembers = [],
+  currentUser,
   editingSale,
   prefilledLead,
   onConfirmLeadDone,
@@ -58,6 +61,7 @@ export const PosScreen: React.FC<PosScreenProps> = ({
   onCancelEdit,
   onNavigate,
 }) => {
+  const canManageSales = hasPermission(currentUser, 'canManageSales');
   // Form State
   const [selectedSystem, setSelectedSystem] = useState<SystemType>('محلات');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('سوبر ماركت');
@@ -1177,6 +1181,12 @@ export const PosScreen: React.FC<PosScreenProps> = ({
 
         {/* Action Buttons */}
         <div className="grid grid-cols-1 gap-2.5 pt-2">
+          {!canManageSales ? (
+            <div className="glass-card p-4 text-center text-gray-400 text-xs">
+              معندكش صلاحية تسجيل أو تعديل المبيعات. تواصل مع صاحب الحساب لو محتاج الصلاحية دي.
+            </div>
+          ) : (
+          <>
           {/* Confirm Sale Button */}
           <button
             type="button"
@@ -1198,6 +1208,8 @@ export const PosScreen: React.FC<PosScreenProps> = ({
             <Send className="w-4 h-4 text-amber-400" />
             {editingSale ? 'حفظ التعديل كـ مسودة (قبل الدفع)' : 'إرسال قبل الدفع (حفظ كـ مسودة)'}
           </button>
+          </>
+          )}
         </div>
       </div>
 
