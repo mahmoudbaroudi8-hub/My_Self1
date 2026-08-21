@@ -196,6 +196,22 @@ export interface TeamMember {
   lastFailedAttempt?: string;
   isActive: boolean;
   createdAt?: string;
+  // App-reopen lock: a short PIN required every time the app is opened on
+  // this device, separate from the login password. Optional per member.
+  appLockEnabled?: boolean;
+  appLockPinHash?: string;
+  appLockPinSalt?: string;
+  // Known device fingerprints this member has successfully logged in from
+  // before, used to detect and alert the owner about logins from new devices.
+  knownDeviceIds?: string[];
+}
+
+export interface LoginAlert {
+  id: string;
+  memberId: string;
+  memberName: string;
+  deviceLabel: string;
+  createdAt: string;
 }
 
 export type PricingModel = 'full_sale' | 'monthly_subscription' | 'yearly_subscription';
