@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Bell, Settings, User, X, CheckCircle2, Clock, AlertTriangle, ChevronRight, Receipt, Database, Smartphone, Monitor, LayoutGrid, Package, LogOut, UserCheck, Calendar, Phone } from 'lucide-react';
-import { ScreenView, Sale, Client, TeamMember, Lead, POSITION_LABELS } from '../types';
+import { Bell, Settings, User, X, CheckCircle2, Clock, AlertTriangle, ChevronRight, Receipt, Database, Smartphone, Monitor, LayoutGrid, Package, LogOut, UserCheck, Calendar, Phone, Lock, ShieldAlert } from 'lucide-react';
+import { ScreenView, Sale, Client, TeamMember, Lead, POSITION_LABELS, LoginAlert } from '../types';
 import { isScreenAllowedForUser } from '../lib/permissions';
+import { AppLockSetupModal } from './AppLockSetupModal';
+import { subscribeLoginAlerts, dismissLoginAlert } from '../lib/firebase';
 
 interface NavbarProps {
   currentScreen: ScreenView;
@@ -30,8 +32,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showAppLockSetup, setShowAppLockSetup] = useState(false);
+  const [loginAlerts, setLoginAlerts] = useState<LoginAlert[]>([]);
 
   const isOwner = !currentUser || currentUser.position === 'owner';
+  const canSeeLoginAlerts = isOwner || Boolean(currentUser?.permissions?.canManageTeam);
+
+  React.useEffect(() => {
+    if (!canSeeLoginAlerts) {
+      setLoginAlerts([]);
+      return;
+    }
+    const unsubscribe = subscribeLoginAlerts(setLoginAlerts);
+    return unsubscribe;
+  }, [canSeeLoginAlerts]);
 
   const getScreenTitle = () => {
     switch (currentScreen) {
@@ -115,8 +129,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         .slice(0, 3);
 
   const totalAlertsCount = isOwner
-    ? pendingCollectionSales.length + debtSales.length + assignedLeads.length
-    : pendingCollectionSales.length + debtSales.length + assignedLeads.length + assignedVisits.length;
+    ? pendingCollectionSales.length + debtSales.length + assignedLeads.length + loginAlerts.length
+    : pendingCollectionSales.length + debtSales.length + assignedLeads.length + assignedVisits.length + loginAlerts.length;
 
   const canAccessPackages = isScreenAllowedForUser(currentUser, 'packages');
   const canAccessTeam = isScreenAllowedForUser(currentUser, 'team');
@@ -272,6 +286,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>النسخ الاحتياطي وإعدادات النظام</span>
                 </button>
               )}
+
+              {currentUser && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    setShowAppLockSetup(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white flex items-center gap-2 transition-colors font-medium text-xs"
+                >
+                  <Lock className="w-4 h-4 text-emerald-400" />
+                  <span>{currentUser.appLockEnabled ? 'قفل PIN مفعّل — إدارة' : 'تفعيل قفل PIN عند فتح التطبيق'}</span>
+                </button>
+              )}
             </div>
 
             <div className="pt-2 border-t border-white/10">
@@ -339,6 +367,37 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Scrollable Body Container */}
             <div className="p-4 overflow-y-auto space-y-4 flex-1">
+              {/* New device login alerts (owner / team managers only) */}
+              {loginAlerts.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold border-b border-white/10 pb-1.5">
+                    <ShieldAlert className="w-4 h-4" />
+                    <span>تسجيلات دخول من أجهزة جديدة ({loginAlerts.length})</span>
+                  </div>
+                  {loginAlerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-center justify-between gap-2"
+                    >
+                      <div>
+                        <p className="text-xs font-bold text-white">{alert.memberName}</p>
+                        <p className="text-[10px] text-gray-400">{alert.deviceLabel}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dismissLoginAlert(alert.id).catch(() => {});
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[10px] font-bold text-gray-300"
+                      >
+                        تمام، عرفت
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Assigned Leads (for Employee & Owner) */}
               {assignedLeads.length > 0 && (
                 <div className="space-y-2">
@@ -578,6 +637,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {showAppLockSetup && currentUser && (
+        <AppLockSetupModal
+          currentUser={currentUser}
+          onClose={() => setShowAppLockSetup(false)}
+          onUpdated={() => {}}
+        />
       )}
     </>
   );
