@@ -49,6 +49,8 @@ import { Client, Package, Offer, ProjectItem, Sale, Expense, Payment, TeamMember
 import { isScreenAllowedForUser, getFirstAllowedScreen } from './lib/permissions';
 import { Lock } from 'lucide-react';
 import { Navbar } from './components/Navbar';
+import { OfflineBanner } from './components/OfflineBanner';
+import { AppLockScreen } from './components/AppLockScreen';
 import { BottomNav } from './components/BottomNav';
 import { QuickSaleButton } from './components/QuickSaleButton';
 import { HomeScreen } from './components/HomeScreen';
@@ -71,6 +73,10 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     return localStorage.getItem('bm_is_logged_in') === 'true' || sessionStorage.getItem('bm_is_logged_in') === 'true';
   });
+  // Forces a re-render after the app-lock PIN is entered correctly; the
+  // actual unlocked/locked state lives in sessionStorage (see AppLockScreen
+  // usage below) so it naturally resets when the browser session ends.
+  const [, setAppUnlocked] = useState(false);
 
   const [currentScreen, setCurrentScreen] = useState<ScreenView>('home');
   const [selectedSector, setSelectedSector] = useState<SystemType>('محلات');
@@ -478,6 +484,26 @@ export default function App() {
     );
   }
 
+  // App-reopen PIN lock: shown once per browser session, even though the
+  // user is already logged in, if they've turned this on for their account.
+  if (
+    isLoggedIn &&
+    currentUser &&
+    currentUser.appLockEnabled &&
+    sessionStorage.getItem(`bm_applock_unlocked_${currentUser.id}`) !== 'true'
+  ) {
+    return (
+      <AppLockScreen
+        currentUser={currentUser}
+        onUnlock={() => {
+          sessionStorage.setItem(`bm_applock_unlocked_${currentUser.id}`, 'true');
+          setAppUnlocked(true);
+        }}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   const isScreenAllowed = (screen: ScreenView): boolean => {
     if (!currentUser) return true;
     if (currentUser.position === 'owner') return true;
@@ -487,6 +513,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0B1220] text-gray-100 font-['Cairo',sans-serif] selection:bg-[#FF7A1A]/30 flex flex-col justify-between relative overflow-x-clip">
+      <OfflineBanner />
       {/* Decorative Frosted Ambient Background Elements */}
       <div className="fixed top-[-10%] right-[-10%] w-[50%] h-[50%] max-w-[500px] max-h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none z-0" />
       <div className="fixed bottom-[-10%] left-[-10%] w-[40%] h-[40%] max-w-[400px] max-h-[400px] bg-[#FF7A1A]/10 rounded-full blur-[100px] pointer-events-none z-0" />
