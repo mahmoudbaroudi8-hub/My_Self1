@@ -17,7 +17,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import firebaseConfigData from '../../firebase-applet-config.json';
-import { Client, Package, Offer, Sale, Expense, Payment, ProjectItem, TeamMember, SystemType, CategoryType, Lead } from '../types';
+import { Client, Package, Offer, Sale, Expense, Payment, ProjectItem, TeamMember, SystemType, CategoryType, Lead, LoginAlert } from '../types';
 import { hashText } from './authCrypto';
 
 const firebaseConfig = {
@@ -864,6 +864,70 @@ export async function resetLoginAttempts(memberId: string): Promise<void> {
 
 export async function deleteTeamMember(id: string): Promise<void> {
   await deleteDoc(doc(db, 'team_members', id));
+}
+
+// Returns a stable per-browser device id, creating one on first use. Used
+// to recognize "this device has logged in before" without any server call.
+export function getOrCreateDeviceId(): string {
+  const key = 'bm_device_id';
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function describeDevice(): string {
+  const ua = navigator.userAgent || '';
+  const isMobile = /Mobile|Android|iPhone|iPad/i.test(ua);
+  let browser = 'متصفح غير معروف';
+  if (ua.includes('Edg/')) browser = 'Edge';
+  else if (ua.includes('Chrome/')) browser = 'Chrome';
+  else if (ua.includes('Firefox/')) browser = 'Firefox';
+  else if (ua.includes('Safari/')) browser = 'Safari';
+  return `${browser} - ${isMobile ? 'موبايل' : 'كمبيوتر'}`;
+}
+
+// Called right after a successful login. If this browser/device hasn't
+// logged into this account before, records it as known and raises a
+// login_alerts doc so the owner sees a "new device signed in" notice.
+export async function registerDeviceAndAlertIfNew(member: TeamMember): Promise<void> {
+  try {
+    const deviceId = getOrCreateDeviceId();
+    const known = member.knownDeviceIds || [];
+    if (known.includes(deviceId)) return;
+
+    await updateDoc(doc(db, 'team_members', member.id), {
+      knownDeviceIds: [...known, deviceId],
+    });
+
+    await addDoc(collection(db, 'login_alerts'), {
+      memberId: member.id,
+      memberName: member.name,
+      deviceLabel: describeDevice(),
+      createdAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Error registering device / raising login alert:', err);
+  }
+}
+
+export function subscribeLoginAlerts(callback: (alerts: LoginAlert[]) => void): () => void {
+  return onSnapshot(
+    collection(db, 'login_alerts'),
+    (snapshot) => {
+      const list = snapshot.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<LoginAlert, 'id'>) }))
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      callback(list);
+    },
+    (err) => console.error('Error subscribing to login alerts:', err)
+  );
+}
+
+export async function dismissLoginAlert(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'login_alerts', id));
 }
 
 export function subscribeTeamMembers(callback: (members: TeamMember[]) => void): () => void {
