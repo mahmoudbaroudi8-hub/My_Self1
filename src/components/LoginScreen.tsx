@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock, User, KeyRound, Download, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, UserCheck } from 'lucide-react';
 import { TeamMember } from '../types';
 import { verifyTextMatch } from '../lib/authCrypto';
-import { recordFailedLoginAttempt, resetLoginAttempts, auth, migrateMemberToRealAuth } from '../lib/firebase';
+import { recordFailedLoginAttempt, resetLoginAttempts, auth, migrateMemberToRealAuth, registerDeviceAndAlertIfNew } from '../lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
 interface LoginScreenProps {
@@ -95,6 +95,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           migrateMemberToRealAuth(matchedMember, pInput).catch(() => {});
         }
 
+        // Fire-and-forget: record this device and alert the owner if it's
+        // the first time this browser has logged into this account.
+        registerDeviceAndAlertIfNew(matchedMember).catch(() => {});
+
         if (rememberMe) {
           localStorage.setItem('bm_is_logged_in', 'true');
           localStorage.setItem('bm_active_user_id', matchedMember.id);
@@ -169,6 +173,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         localStorage.removeItem('bm_active_user_id');
       }
       onLoginSuccess(ownerMember);
+      registerDeviceAndAlertIfNew(ownerMember).catch(() => {});
       return;
     }
 
